@@ -15,12 +15,12 @@ class UserRepository(val username: String, val email: String, val phonenumber: S
     val users: List<User>
         get() = _users
 
-    //add campsite
+    //add user
     fun addUser(user: User){
         userRef.document(user.username).set(user)
     }
 
-    //delete campsite
+    //delete user
     fun deleteUser(user: User){
         userRef.document(user.username).delete()
     }
