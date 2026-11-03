@@ -1,3 +1,4 @@
+
 package com.example.auroracampsites
 
 import androidx.compose.foundation.layout.Arrangement
@@ -26,10 +27,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 
 /**
- * Campsite owner screens for viewing and editing campsites.
- * Firestore data and QR code generation still need to be connected.
+ * Displays campsite owner screens using sample data.
+ * Firestore and QR code generation are not connected yet.
  */
-private data class Campsite(
+private data class OwnerCampsite(
     val name: String,
     val location: String,
     val description: String,
@@ -39,10 +40,10 @@ private data class Campsite(
 )
 
 @Composable
-fun CampsiteSearchScreen(modifier: Modifier = Modifier) {
+fun CampsiteOwnerScreen(modifier: Modifier = Modifier) {
     val campsites = remember {
         mutableStateListOf(
-            Campsite(
+            OwnerCampsite(
                 "Pine Creek Campground",
                 "Hinton, Alberta",
                 "Cookhouse, tennis court",
@@ -50,7 +51,7 @@ fun CampsiteSearchScreen(modifier: Modifier = Modifier) {
                 "Hinton, AB",
                 "Family, outdoor"
             ),
-            Campsite(
+            OwnerCampsite(
                 "Lakeview Campsite",
                 "Banff, Alberta",
                 "",
@@ -91,7 +92,7 @@ fun CampsiteSearchScreen(modifier: Modifier = Modifier) {
 
         when (currentPage) {
             "list" -> {
-                ScreenTitle("My Campsites")
+                OwnerTitle("My Campsites")
 
                 Spacer(modifier = Modifier.height(16.dp))
 
@@ -124,20 +125,20 @@ fun CampsiteSearchScreen(modifier: Modifier = Modifier) {
             }
 
             "details" -> {
-                ScreenTitle("Campsite Details")
+                OwnerTitle("Campsite Details")
 
-                CampsiteInfo("Campsite Name", selectedCampsite.name)
-                CampsiteInfo("Location", selectedCampsite.location)
-                CampsiteInfo(
+                OwnerInfo("Campsite Name", selectedCampsite.name)
+                OwnerInfo("Location", selectedCampsite.location)
+                OwnerInfo(
                     "Description / Amenities",
                     selectedCampsite.description
                 )
-                CampsiteInfo(
+                OwnerInfo(
                     "Maximum Occupancy",
                     selectedCampsite.occupancy
                 )
-                CampsiteInfo("Map Location", selectedCampsite.mapLocation)
-                CampsiteInfo("Tags", selectedCampsite.tags)
+                OwnerInfo("Map Location", selectedCampsite.mapLocation)
+                OwnerInfo("Tags", selectedCampsite.tags)
 
                 Button(
                     onClick = {
@@ -170,29 +171,29 @@ fun CampsiteSearchScreen(modifier: Modifier = Modifier) {
             }
 
             "edit" -> {
-                ScreenTitle("Edit Campsite")
+                OwnerTitle("Edit Campsite")
 
-                CampsiteInput("Campsite Name", campsiteName) {
+                OwnerInput("Campsite Name", campsiteName) {
                     campsiteName = it
                 }
 
-                CampsiteInput("Location", location) {
+                OwnerInput("Location", location) {
                     location = it
                 }
 
-                CampsiteInput("Description / Amenities", description) {
+                OwnerInput("Description / Amenities", description) {
                     description = it
                 }
 
-                CampsiteInput("Maximum Occupancy", occupancy) {
+                OwnerInput("Maximum Occupancy", occupancy) {
                     occupancy = it
                 }
 
-                CampsiteInput("Map Location", mapLocation) {
+                OwnerInput("Map Location", mapLocation) {
                     mapLocation = it
                 }
 
-                CampsiteInput("Tags", tags) {
+                OwnerInput("Tags", tags) {
                     tags = it
                 }
 
@@ -200,7 +201,7 @@ fun CampsiteSearchScreen(modifier: Modifier = Modifier) {
 
                 Button(
                     onClick = {
-                        campsites[selectedIndex] = Campsite(
+                        campsites[selectedIndex] = OwnerCampsite(
                             campsiteName,
                             location,
                             description,
@@ -217,20 +218,20 @@ fun CampsiteSearchScreen(modifier: Modifier = Modifier) {
             }
 
             "saved" -> {
-                ScreenTitle("Changes Saved Successfully!")
+                OwnerTitle("Changes Saved Successfully!")
 
-                CampsiteInfo("Campsite Name", selectedCampsite.name)
-                CampsiteInfo("Location", selectedCampsite.location)
-                CampsiteInfo(
+                OwnerInfo("Campsite Name", selectedCampsite.name)
+                OwnerInfo("Location", selectedCampsite.location)
+                OwnerInfo(
                     "Description / Amenities",
                     selectedCampsite.description
                 )
-                CampsiteInfo(
+                OwnerInfo(
                     "Maximum Occupancy",
                     selectedCampsite.occupancy
                 )
-                CampsiteInfo("Map Location", selectedCampsite.mapLocation)
-                CampsiteInfo("Tags", selectedCampsite.tags)
+                OwnerInfo("Map Location", selectedCampsite.mapLocation)
+                OwnerInfo("Tags", selectedCampsite.tags)
 
                 Button(
                     onClick = { currentPage = "details" },
@@ -241,7 +242,7 @@ fun CampsiteSearchScreen(modifier: Modifier = Modifier) {
             }
 
             "qr" -> {
-                ScreenTitle("Campsite QR Code")
+                OwnerTitle("Campsite QR Code")
 
                 Spacer(modifier = Modifier.height(32.dp))
 
@@ -273,7 +274,7 @@ fun CampsiteSearchScreen(modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun ScreenTitle(title: String) {
+private fun OwnerTitle(title: String) {
     Text(
         text = title,
         modifier = Modifier
@@ -285,7 +286,7 @@ private fun ScreenTitle(title: String) {
 }
 
 @Composable
-private fun CampsiteInfo(label: String, value: String) {
+private fun OwnerInfo(label: String, value: String) {
     OutlinedTextField(
         value = value,
         onValueChange = {},
@@ -298,7 +299,7 @@ private fun CampsiteInfo(label: String, value: String) {
 }
 
 @Composable
-private fun CampsiteInput(
+private fun OwnerInput(
     label: String,
     value: String,
     onValueChange: (String) -> Unit
