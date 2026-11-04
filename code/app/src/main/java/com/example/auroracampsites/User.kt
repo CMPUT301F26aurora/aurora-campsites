@@ -1,6 +1,7 @@
 package com.example.auroracampsites
 
 data class User (
+    val Id : String="",
     val username: String="",
     val email: String="",
     val phonenumber: String="",
