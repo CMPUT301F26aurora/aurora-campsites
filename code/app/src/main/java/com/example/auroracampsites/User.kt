@@ -1,9 +1,12 @@
 package com.example.auroracampsites
 
 data class User (
-    val Id : String="",
+    val id : String="",
     val username: String="",
     val email: String="",
-    val phonenumber: String="",
-    val permissionlevel: Int=0 // 0 = regular user, 1 = owner, 2 = admin
+    val phoneNumber: String="",
+    val isEntrant: Boolean = true,
+    val isOwner: Boolean = false,
+    val isAdmin: Boolean = false,
+    val notificationsEnabled: Boolean =true
 )
