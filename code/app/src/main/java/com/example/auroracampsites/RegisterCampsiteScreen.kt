@@ -42,32 +42,19 @@ data class CampsiteFormData(
 @Composable
 fun RegisterCampsiteScreen(
     modifier: Modifier = Modifier,
-    isEditMode: Boolean = false,
-    existingCampsite: CampsiteFormData = CampsiteFormData(),
     onSaved: (CampsiteFormData) -> Unit = {}
 ) {
-    var campsiteName by remember(isEditMode, existingCampsite) {
-        mutableStateOf(existingCampsite.name)
-    }
-    var location by remember(isEditMode, existingCampsite) {
-        mutableStateOf(existingCampsite.location)
-    }
-    var description by remember(isEditMode, existingCampsite) {
-        mutableStateOf(existingCampsite.description)
-    }
-    var occupancy by remember(isEditMode, existingCampsite) {
-        mutableStateOf(existingCampsite.occupancy)
-    }
-    var mapLocation by remember(isEditMode, existingCampsite) {
-        mutableStateOf(existingCampsite.mapLocation)
-    }
-    var tags by remember(isEditMode, existingCampsite) {
-        mutableStateOf(existingCampsite.tags)
-    }
+    var campsiteName by remember { mutableStateOf("") }
+    var location by remember { mutableStateOf("") }
+    var description by remember { mutableStateOf("") }
+    var occupancy by remember { mutableStateOf("") }
+    var mapLocation by remember { mutableStateOf("") }
+    var tags by remember { mutableStateOf("") }
 
     var selectedImage by remember {
         mutableStateOf<Uri?>(null)
     }
+
     var success by remember { mutableStateOf(false) }
     var showError by remember { mutableStateOf(false) }
 
@@ -97,10 +84,7 @@ fun RegisterCampsiteScreen(
             Spacer(Modifier.height(150.dp))
 
             Text(
-                text = if (isEditMode)
-                    "Changes Saved!"
-                else
-                    "Registration Successful!",
+                text = "Registration Successful!",
                 fontSize = 24.sp,
                 fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center
@@ -109,21 +93,13 @@ fun RegisterCampsiteScreen(
             Spacer(Modifier.height(24.dp))
 
             OutlinedButton(
-                onClick = {
-                    success = false
-                }
+                onClick = { success = false }
             ) {
-                Text(
-                    if (isEditMode) "Back to Edit"
-                    else "Back to Form"
-                )
+                Text("Back to Form")
             }
         } else {
             Text(
-                text = if (isEditMode)
-                    "Edit Campsite"
-                else
-                    "Register Campsite",
+                text = "Register Campsite",
                 fontSize = 22.sp,
                 fontWeight = FontWeight.Bold
             )
@@ -246,10 +222,7 @@ fun RegisterCampsiteScreen(
                 border = BorderStroke(1.dp, Color.Black)
             ) {
                 Text(
-                    if (isEditMode)
-                        "Save Changes"
-                    else
-                        "Register Campsite",
+                    "Register Campsite",
                     fontWeight = FontWeight.Bold
                 )
             }
