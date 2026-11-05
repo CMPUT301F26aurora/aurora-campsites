@@ -4,18 +4,13 @@ import androidx.compose.runtime.mutableStateListOf
 import com.google.firebase.Firebase
 import com.google.firebase.firestore.firestore
 
-class UserRepository(val username: String, val email: String, val phonenumber: String, permissionlevel: Int) {
+class UserRepository {
     private val db = Firebase.firestore
     private val userRef = db.collection("users")
-    private val _users = mutableStateListOf(
-        User("Admin1","placeholder@email.com","placeholder@email.com","582-110-2224" )
-    )
+    private val _users = mutableStateListOf<User>()
+    val users: List<User> get() = _users
 
-    //get user list
-    val users: List<User>
-        get() = _users
-
-    //add user
+    //Add user to firestore
     fun addUser(user: User){
         userRef.document(user.username).set(user)
     }
