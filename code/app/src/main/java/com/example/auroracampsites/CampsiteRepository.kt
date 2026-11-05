@@ -4,7 +4,13 @@ import androidx.compose.runtime.mutableStateListOf
 import com.google.firebase.Firebase
 import com.google.firebase.firestore.firestore
 
-class CampsiteRepository(val name: String, val location: String, var rating: Int) {
+/**
+ * The repository for the campsites. Manages functions relating to manipulating campsites
+ */
+class MyClass(
+    val name: String
+)
+class CampsiteRepository() {
     private val db = Firebase.firestore
     private val campsitesRef = db.collection("campsites")
     private val _campsites = mutableStateListOf(
@@ -15,13 +21,27 @@ class CampsiteRepository(val name: String, val location: String, var rating: Int
     val campsites: List<Campsite>
         get() = _campsites
 
+    /**
+     * addCampsite: Adds a campsite to the database.
+     *
+     * Takes in a campsite value, and adds it to the database using its name
+     *
+     * @param campsite A campsite object.
+     */
     //add campsite
     fun addCampsite(campsite: Campsite){
-        campsitesRef.document(campsite.name).set(campsite)
+        campsitesRef.document(campsite.id).set(campsite)
     }
 
+    /**
+     * deleteCampsite: Removes a campsite from the database
+     *
+     * Takes in a campsite value, and removes the campsite from the database.
+     *
+     * @param campsite A campsite object.
+     */
     //delete campsite
     fun deleteCampsite(campsite: Campsite){
-        campsitesRef.document(campsite.name).delete()
+        campsitesRef.document(campsite.id).delete()
     }
 }

@@ -1,6 +1,7 @@
 package com.example.auroracampsites
 import com.google.firebase.Timestamp
 
+
 data class WaitList (
     val id : String="",
     //this will map to ID in user data class
