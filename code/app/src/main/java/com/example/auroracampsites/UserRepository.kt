@@ -8,7 +8,7 @@ class UserRepository(val username: String, val email: String, val phonenumber: S
     private val db = Firebase.firestore
     private val userRef = db.collection("users")
     private val _users = mutableStateListOf(
-        User("Admin1","placeholder@email.com","123-456-7890",2)
+        User("Admin1","placeholder@email.com","placeholder@email.com","582-110-2224" )
     )
 
     //get user list
