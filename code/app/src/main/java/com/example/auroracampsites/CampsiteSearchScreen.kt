@@ -53,7 +53,10 @@ fun CampsiteSearchScreen(navController: NavController) {
                 price = 55.0,
                 availableDate = "2026-07-15",
                 rating = 4.8,
-                hasActiveLottery = true
+                hasActiveLottery = true,
+                isWaitlistFull = false,
+                isWinner = true,
+                isLoser = false
             ),
             Campsite(
                 id = "2",
@@ -65,7 +68,11 @@ fun CampsiteSearchScreen(navController: NavController) {
                 price = 60.0,
                 availableDate = "2026-06-01",
                 rating = 4.9,
-                hasActiveLottery = true
+                hasActiveLottery = true,
+                isWaitlistFull = true,
+                isWinner = false,
+                isLoser = true
+                
             ),
             Campsite(
                 id = "3",
@@ -77,7 +84,11 @@ fun CampsiteSearchScreen(navController: NavController) {
                 price = 40.0,
                 availableDate = "2026-08-10",
                 rating = 4.3,
-                hasActiveLottery = false
+                hasActiveLottery = false,
+                isWaitlistFull = false,
+                isWinner = false,
+                isLoser = false
+                
             )
         )
     }
