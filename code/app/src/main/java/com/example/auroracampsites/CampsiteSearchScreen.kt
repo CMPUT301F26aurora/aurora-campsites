@@ -1,4 +1,4 @@
-package com.example.aurora_campsites
+package com.example.auroracampsites
 
 import androidx.compose.runtime.Composable
 import androidx.navigation.NavController
