@@ -5,11 +5,11 @@ data class Campsite (
     val name: String="",
     val location: String="",
     val maxOccupancy: Int=0,
-    val price:Double=00,
+    val price:Double=0.0,
     //ownerID will map to UserID of owners
     val ownerID: String="",
     val rating:Double=0.0,
     val rules: String="",
-    val cancellationPolicy="",
-    val campsiteOwner: ""
+    val cancellationPolicy : String ="",
+    val campsiteOwner: String  = ""
 )
