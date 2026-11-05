@@ -14,5 +14,9 @@ data class Campsite (
     val description: String = "Beautiful scenic campsite with modern facilities.",
     val amenities: List<String> = listOf("Fire Pit", "Picnic Table", "Water Hookup"),
     val availableDate: String = "2026-06-01",
-    val hasActiveLottery: Boolean = true
+    val hasActiveLottery: Boolean = true,
+    val isWaitlistFull: Boolean = false,
+    val isWinner: Boolean = false,
+    val isLoser: Boolean = false
+    
 )
