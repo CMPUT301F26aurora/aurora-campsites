@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.AlertDialog
 
 /** U.S.01.01.01 - U.S.01.01.06
  * Role/Pattern: Composable UI Screen (View) for searching campsites.
