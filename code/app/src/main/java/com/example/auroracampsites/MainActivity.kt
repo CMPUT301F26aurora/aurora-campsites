@@ -13,6 +13,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.navigation.compose.rememberNavController
 import com.example.auroracampsites.ui.theme.AuroraCampsitesTheme
 import com.google.firebase.Firebase
 import com.google.firebase.firestore.firestore
