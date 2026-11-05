@@ -294,9 +294,16 @@ fun CampsiteDetailScreen(
     campsite: Campsite,
     onBackClick: () -> Unit
 ) {
-    // State to track if the user joined the lottery during this session
-    var hasJoinedLottery by remember { mutableStateOf(false) }
+    // Key all state variables to campsite.id so they reset when opening a different campsite
+    var hasJoinedLottery by remember(campsite.id) { mutableStateOf(false) }
+    var showLeaveConfirmation by remember { mutableStateOf(false) }
 
+    // US 01.03.01 - Win Notification & Reservation States
+    var hasWonLottery by remember(campsite.id) { mutableStateOf(campsite.isWinner) }
+    var showReservationDialog by remember { mutableStateOf(false) }
+    var selectedBookingDate by remember(campsite.id) { mutableStateOf(campsite.availableDate) }
+    var isBookingConfirmed by remember(campsite.id) { mutableStateOf(false) }
+    var hasLostLottery by remember(campsite.id) { mutableStateOf(campsite.isLoser) }
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -374,25 +381,40 @@ fun CampsiteDetailScreen(
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        // Lottery Action Section
-        if (campsite.hasActiveLottery) {
+        // Waitlist / Lottery Action Section
+        if (campsite.hasActiveLottery && (!campsite.isWaitlistFull || hasJoinedLottery)) {
             Button(
-                onClick = { hasJoinedLottery = true },
-                enabled = !hasJoinedLottery,
+                onClick = {
+                    if (hasJoinedLottery) {
+                        showLeaveConfirmation = true
+                    } else {
+                        hasJoinedLottery = true
+                    }
+                },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .testTag("joinLotteryButton")
+                    .testTag(if (hasJoinedLottery) "leaveWaitlistButton" else "joinWaitlistButton")
             ) {
-                Text(if (hasJoinedLottery) "Joined Lottery!" else "Join Live Lottery")
+                Text(if (hasJoinedLottery) "Leave Waitlist" else "Join Waitlist")
             }
 
             if (hasJoinedLottery) {
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "✓ You have successfully joined the lottery for ${campsite.name}!",
+                    text = "✓ You have successfully joined the waitlist for ${campsite.name}!",
                     fontSize = 14.sp,
-                    modifier = Modifier.testTag("lotteryConfirmationText")
+                    modifier = Modifier.testTag("waitlistConfirmationText")
                 )
+            }
+        } else if (campsite.hasActiveLottery) {
+            Button(
+                onClick = {},
+                enabled = false,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("waitlistFullButton")
+            ) {
+                Text("Waitlist Full")
             }
         } else {
             Button(
@@ -405,5 +427,155 @@ fun CampsiteDetailScreen(
                 Text("No Active Lottery")
             }
         }
+        // --- US 01.03.01: Win Notification UI ---
+
+        // Winner Banner / Notification Card
+        // --- US 01.03.01 & US 01.03.02: Lottery Result Notifications ---
+        if (hasWonLottery) {
+            Spacer(modifier = Modifier.height(16.dp))
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("winNotificationCard")
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = "🎉 Congratulations! You won the lottery!",
+                        fontSize = 18.sp
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "You have been selected for ${campsite.name}. Please select your reservation date to confirm.",
+                        fontSize = 14.sp
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Button(
+                        onClick = { showReservationDialog = true },
+                        enabled = !isBookingConfirmed,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("claimReservationButton")
+                    ) {
+                        Text(if (isBookingConfirmed) "Reservation Confirmed!" else "Select & Confirm Booking Date")
+                    }
+                }
+            }
+        } else if (hasLostLottery) {
+            Spacer(modifier = Modifier.height(16.dp))
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("loseNotificationCard")
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = "Not Selected for ${campsite.name}",
+                        fontSize = 18.sp
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "Thank you for participating in the lottery. Unfortunately, you were not selected for a reservation in this draw.",
+                        fontSize = 14.sp
+                    )
+                }
+            }
+        }
+
+        // Simulation control buttons for testing win / lose
+        Row(
+            modifier = Modifier.padding(top = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Button(
+                onClick = {
+                    hasWonLottery = !hasWonLottery
+                    if (hasWonLottery) hasLostLottery = false // Reset lose state when winning
+                },
+                modifier = Modifier.testTag("simulateWinButton")
+            ) {
+                Text(if (hasWonLottery) "Reset Win" else "Simulate Win")
+            }
+
+            Button(
+                onClick = {
+                    hasLostLottery = !hasLostLottery
+                    if (hasLostLottery) hasWonLottery = false // Reset win state when losing
+                },
+                modifier = Modifier.testTag("simulateLoseButton")
+            ) {
+                Text(if (hasLostLottery) "Reset Lose" else "Simulate Lose")
+            }
+        }
+
+
+        // Leave Waitlist Confirmation Dialog
+        if (showLeaveConfirmation) {
+            AlertDialog(
+                onDismissRequest = { showLeaveConfirmation = false },
+                title = { Text("Leave Waitlist") },
+                text = { Text("Are you sure you want to leave the waitlist for ${campsite.name}?") },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            hasJoinedLottery = false
+                            showLeaveConfirmation = false
+                        },
+                        modifier = Modifier.testTag("confirmLeaveButton")
+                    ) {
+                        Text("Confirm")
+                    }
+                },
+                dismissButton = {
+                    Button(
+                        onClick = { showLeaveConfirmation = false },
+                        modifier = Modifier.testTag("cancelLeaveButton")
+                    ) {
+                        Text("Cancel")
+                    }
+                }
+            )
+        }
+        // US 01.03.01 - Reservation Confirmation Dialog
+        if (showReservationDialog) {
+            AlertDialog(
+                onDismissRequest = { showReservationDialog = false },
+                title = { Text("Select Reservation Date") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Selected Campsite: ${campsite.name}")
+                        Text("Price: $${campsite.price} / night")
+                        Spacer(modifier = Modifier.height(8.dp))
+                        TextField(
+                            value = selectedBookingDate,
+                            onValueChange = { selectedBookingDate = it },
+                            label = { Text("Reservation Date (YYYY-MM-DD)") },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("reservationDateInput")
+                        )
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            isBookingConfirmed = true
+                            showReservationDialog = false
+                        },
+                        modifier = Modifier.testTag("confirmBookingButton")
+                    ) {
+                        Text("Confirm Booking")
+                    }
+                },
+                dismissButton = {
+                    Button(
+                        onClick = { showReservationDialog = false },
+                        modifier = Modifier.testTag("cancelBookingButton")
+                    ) {
+                        Text("Cancel")
+                    }
+                }
+            )
+        }
+
     }
 }
