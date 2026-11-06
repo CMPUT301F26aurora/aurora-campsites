@@ -1,11 +1,12 @@
 package com.example.auroracampsites
 
+import com.example.auroracampsites.data.models.Campsite
 import junit.framework.TestCase.assertEquals
 import junit.framework.TestCase.assertFalse
 import junit.framework.TestCase.assertTrue
 import org.junit.Before
 import org.junit.Test
-
+//tests are also in androidTest folder
 class CampsiteDetailTest {
     private lateinit var detailCampsite: Campsite
 
@@ -20,7 +21,7 @@ class CampsiteDetailTest {
             amenities = listOf("Fire Pit", "Clean Water", "Bear Vault"),
             maxOccupancy = 6,
             price = 45.0,
-            availableDate = "2026-07-10",
+            availableDates = listOf("2026-07-10"),
             rating = 4.8,
             hasActiveLottery = true,
             isWaitlistFull = false,

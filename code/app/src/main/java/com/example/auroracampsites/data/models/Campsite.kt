@@ -1,4 +1,4 @@
-package com.example.auroracampsites
+package com.example.auroracampsites.data.models
 
 /**
  * A data class that represents a campsite.
@@ -16,7 +16,7 @@ package com.example.auroracampsites
  * @property cancellationPolicy The policy for cancellation on the campsite.
  * @property description The description of the campsite
  * @property amenities The amenities available to the campsite.
- * @property availableDate The date that the campsite is available.
+ * @property availableDates The dates that the campsite is available.
  * @property hasActiveLottery A boolean that indicates if the campsite is within a lottery or not.
  * @property isWaitlistFull A boolean that indicates if the waitlist is full or not.
  * @property isWinner If the campsite is the winner of a lottery pick.
@@ -35,10 +35,12 @@ data class Campsite (
     val cancellationPolicy: String = "",
     val description: String = "Beautiful scenic campsite with modern facilities.",
     val amenities: List<String> = listOf("Fire Pit", "Picnic Table", "Water Hookup"),
-    val availableDate: String = "2026-06-01",
     val hasActiveLottery: Boolean = true,
     val isWaitlistFull: Boolean = false,
     val isWinner: Boolean = false,
-    val isLoser: Boolean = false
+    val isLoser: Boolean = false,
+    val bookedDates: List<String> = emptyList(), // e.g "2026-11-10", "2026-11-11"
+    val availableDates: List<String> = emptyList(), // e.g "2026-11-12", "2026-11-13"
+
     
 )

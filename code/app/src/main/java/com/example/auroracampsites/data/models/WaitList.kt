@@ -1,4 +1,4 @@
-package com.example.auroracampsites
+package com.example.auroracampsites.data.models
 import com.google.firebase.Timestamp
 
 

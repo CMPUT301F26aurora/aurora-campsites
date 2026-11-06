@@ -1,4 +1,4 @@
-package com.example.auroracampsites
+package com.example.auroracampsites.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -9,136 +9,68 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
-import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.AlertDialog
+import com.example.auroracampsites.data.models.Campsite
+import com.example.auroracampsites.data.repository.CampsiteRepository
 
-/**
- * Role/Pattern: Composable UI Screen (View) for campsite discovery.
- *
- * Purpose:
- * - Allows users to search campsites by keyword and filter by province, date, and guest capacity.
- * - Displays matching results in a scrollable list of cards.
- *
- * Navigation & Connections:
- * - Connected from the main app navigation menu.
- * - Connected to CampsiteDetailScreen by opening it when a campsite card is clicked.
- * - Uses back navigation to return to the previous screen.
- *
- * Issues:
- * - Needs live Firestore database connectivity to replace mock sample data.
- */
 @Composable
 fun CampsiteSearchScreen(navController: NavController) {
-    var search by remember {
-        mutableStateOf("")
+    var search by remember { mutableStateOf("") }
+
+    val repository = remember { CampsiteRepository() }
+
+    // Hold the full list and the filtered display list
+    var allCampsites by remember { mutableStateOf<List<Campsite>>(emptyList()) }
+    val displayList = remember { mutableStateListOf<Campsite>() }
+    var isLoading by remember { mutableStateOf(true) }
+
+    // Fetch campsites from Firestore when the screen launches
+    LaunchedEffect(Unit) {
+        isLoading = true
+        allCampsites = repository.fetchCampsites()
+        displayList.clear()
+        displayList.addAll(allCampsites)
+        isLoading = false
     }
 
-
-    // Master sample list with full campsite details
-    val allCampsites = remember {
-        CampsiteRepository()
-    }
-    //below is tester campsite code, block-commented out.
-    /*
-    val allCampsites = remember {
-        listOf(
-            Campsite(
-                id = "1",
-                name = "Jasper National Park",
-                location = "Alberta, Canada",
-                description = "Nestled in the heart of the Rocky Mountains with stunning alpine views and lake access.",
-                amenities = listOf("Fire Pit", "Water Hookup", "Bear Proof Storage", "Showers"),
-                maxOccupancy = 6,
-                price = 55.0,
-                availableDate = "2026-07-15",
-                rating = 4.8,
-                hasActiveLottery = true,
-                isWaitlistFull = false,
-                isWinner = true,
-                isLoser = false
-            ),
-            Campsite(
-                id = "2",
-                name = "Banff National Park",
-                location = "Alberta, Canada",
-                description = "Scenic campsite right near the lake with easy hiking trail access and full picnic facilities.",
-                amenities = listOf("Fire Pit", "Picnic Table", "WiFi", "Electricity"),
-                maxOccupancy = 4,
-                price = 60.0,
-                availableDate = "2026-06-01",
-                rating = 4.9,
-                hasActiveLottery = true,
-                isWaitlistFull = true,
-                isWinner = false,
-                isLoser = true
-
-            ),
-            Campsite(
-                id = "3",
-                name = "Elk Island National Park",
-                location = "Alberta, Canada",
-                description = "Quiet woodland campground perfect for stargazing, wildlife viewing, and canoeing.",
-                amenities = listOf("Fire Pit", "Canoe Rental", "Picnic Table"),
-                maxOccupancy = 2,
-                price = 40.0,
-                availableDate = "2026-08-10",
-                rating = 4.3,
-                hasActiveLottery = false,
-                isWaitlistFull = false,
-                isWinner = false,
-                isLoser = false
-
-            )
-        )
-    }
-     */
-    // List displayed on screen
-    val displayList = remember {
-        mutableStateListOf<Campsite>().apply { addAll(allCampsites.campsites) }
-    }
-
-    //Controls whether the filter dialog is visible
     var showFilterSheet by remember { mutableStateOf(false) }
-    // State to track selected campsite for detailed view
     var selectedCampsite by remember { mutableStateOf<Campsite?>(null) }
 
-    //state for the mini searchbars/inputs inside the filter screen
     var provinceFilter by remember { mutableStateOf("") }
     var dateFilter by remember { mutableStateOf("") }
     var guestsFilter by remember { mutableStateOf("") }
-    // Show detail view if a campsite is selected
+
     selectedCampsite?.let { campsite ->
-        CampsiteDetailScreen(
+        CampsiteDetailsScreen(
+            navController = navController,
             campsite = campsite,
             onBackClick = { selectedCampsite = null }
         )
         return
     }
 
-    /**
-     * applyFilters: A helper function for filters
-     *
-     * Applies filters to a given list.
-     */
-    //helper function to filter campsites based on all active criteria
     fun applyFilters() {
         displayList.clear()
-        val filtered = allCampsites.campsites.filter { campsite ->
+        val filtered = allCampsites.filter { campsite ->
             val matchesSearch = search.isBlank() ||
                     campsite.name.contains(search, ignoreCase = true) ||
                     campsite.location.contains(search, ignoreCase = true)
@@ -147,7 +79,7 @@ fun CampsiteSearchScreen(navController: NavController) {
                     campsite.location.contains(provinceFilter, ignoreCase = true)
 
             val matchesDate = dateFilter.isBlank() ||
-                    campsite.availableDate.contains(dateFilter, ignoreCase = true)
+                    campsite.availableDates.any { it.contains(dateFilter, ignoreCase = true) }
 
             val matchesGuests = guestsFilter.toIntOrNull()?.let { reqGuests ->
                 campsite.maxOccupancy >= reqGuests
@@ -165,11 +97,8 @@ fun CampsiteSearchScreen(navController: NavController) {
     ) {
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Back button to return to previous screen
         Button(
-            onClick = {
-                navController.popBackStack()
-            },
+            onClick = { navController.popBackStack() },
             modifier = Modifier.testTag("backButton")
         ) {
             Text("Back")
@@ -184,7 +113,6 @@ fun CampsiteSearchScreen(navController: NavController) {
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Text field, Search button, and Filter button
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -215,43 +143,46 @@ fun CampsiteSearchScreen(navController: NavController) {
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // List to display campsites
-        LazyColumn(
-            modifier = Modifier.testTag("campsiteList")
-        ) {
-            items(displayList) { campsite ->
-                Spacer(modifier = Modifier.height(12.dp))
+        if (isLoading) {
+            CircularProgressIndicator(modifier = Modifier.align(Alignment.CenterHorizontally))
+        } else {
+            LazyColumn(
+                modifier = Modifier.testTag("campsiteList")
+            ) {
+                items(displayList) { campsite ->
+                    Spacer(modifier = Modifier.height(12.dp))
 
-                Card(
-                    onClick = { selectedCampsite = campsite },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("campsiteCard_${campsite.id}")
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text(
-                            text = campsite.name,
-                            fontSize = 20.sp
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = "Location: ${campsite.location}",
-                            fontSize = 14.sp
-                        )
-                        Text(
-                            text = "Max Occupancy: ${campsite.maxOccupancy} guests",
-                            fontSize = 14.sp
-                        )
-                        Text(
-                            text = "Rating: ${campsite.rating} / 5.0",
-                            fontSize = 14.sp
-                        )
+                    Card(
+                        onClick = { selectedCampsite = campsite },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("campsiteCard_${campsite.id}")
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text(
+                                text = campsite.name,
+                                fontSize = 20.sp
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "Location: ${campsite.location}",
+                                fontSize = 14.sp
+                            )
+                            Text(
+                                text = "Max Occupancy: ${campsite.maxOccupancy} guests",
+                                fontSize = 14.sp
+                            )
+                            Text(
+                                text = "Rating: ${campsite.rating} / 5.0",
+                                fontSize = 14.sp
+                            )
+                        }
                     }
                 }
             }
         }
     }
-    // Filter Dialog 
+
     if (showFilterSheet) {
         AlertDialog(
             onDismissRequest = { showFilterSheet = false },
@@ -262,19 +193,25 @@ fun CampsiteSearchScreen(navController: NavController) {
                         value = provinceFilter,
                         onValueChange = { provinceFilter = it },
                         label = { Text("Province / State") },
-                        modifier = Modifier.fillMaxWidth().testTag("filterProvinceInput")
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("filterProvinceInput")
                     )
                     TextField(
                         value = dateFilter,
                         onValueChange = { dateFilter = it },
                         label = { Text("Booking Date (YYYY-MM-DD)") },
-                        modifier = Modifier.fillMaxWidth().testTag("filterDateInput")
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("filterDateInput")
                     )
                     TextField(
                         value = guestsFilter,
                         onValueChange = { guestsFilter = it },
                         label = { Text("Number of Guests") },
-                        modifier = Modifier.fillMaxWidth().testTag("filterGuestsInput")
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("filterGuestsInput")
                     )
                 }
             },
@@ -305,4 +242,3 @@ fun CampsiteSearchScreen(navController: NavController) {
         )
     }
 }
-

@@ -1,5 +1,6 @@
 package com.example.auroracampsites
 
+import com.example.auroracampsites.data.models.Campsite
 import junit.framework.TestCase.assertEquals
 import junit.framework.TestCase.assertFalse
 import junit.framework.TestCase.assertTrue
@@ -20,7 +21,7 @@ class CampsiteSearchTest {
                 description = "Nestled in the heart of the Rocky Mountains.",
                 maxOccupancy = 6,
                 price = 55.0,
-                availableDate = "2026-07-15",
+                availableDates = listOf("2026-07-15"),
                 rating = 4.8
             ),
             Campsite(
@@ -30,7 +31,7 @@ class CampsiteSearchTest {
                 description = "Scenic campsite right near the lake.",
                 maxOccupancy = 4,
                 price = 60.0,
-                availableDate = "2026-06-01",
+                availableDates = listOf("2026-06-01"),
                 rating = 4.9
             ),
             Campsite(
@@ -40,7 +41,7 @@ class CampsiteSearchTest {
                 description = "Quiet woodland campground perfect for stargazing.",
                 maxOccupancy = 2,
                 price = 40.0,
-                availableDate = "2026-08-10",
+                availableDates = listOf("2026-08-10"),
                 rating = 4.3
             )
         )
@@ -73,7 +74,7 @@ class CampsiteSearchTest {
     fun filter_byAvailableDate_returnsMatchingDate() {
         val dateQuery = "2026-08-10"
         val filtered = sampleCampsites.filter { campsite ->
-            campsite.availableDate.contains(dateQuery, ignoreCase = true)
+            campsite.availableDates.contains(dateQuery)
         }
 
         assertEquals(1, filtered.size)
