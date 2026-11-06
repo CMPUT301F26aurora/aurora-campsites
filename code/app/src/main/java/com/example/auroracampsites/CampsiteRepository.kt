@@ -9,14 +9,11 @@ import kotlin.String
 /**
  * The repository for the campsites. Manages functions relating to manipulating campsites
  */
-class MyClass(
-    val name: String
-)
 class CampsiteRepository() {
     private val db = Firebase.firestore
     private val campsitesRef = db.collection("campsites")
     private val _campsites = mutableStateListOf(
-        Campsite("1","Happy Meadows","56 Acreage Road, Banff, Alberta, Canada",10,500.0,4.0,"Admin1","No Littering","No Cancellations","Beautiful scenic campsite with modern facilities.",listOf("Fire Pit", "Picnic Table", "Water Hookup"),"2026-06-01",false,false,false,false)
+        Campsite("1","Happy Meadows","Alberta, Canada",10,500.0,4.0,"Admin1","No Littering","No Cancellations","Beautiful scenic campsite with modern facilities.",listOf("Fire Pit", "Picnic Table", "Water Hookup"),"2026-06-01",false,false,false,false)
     )
 
     //get campsite list

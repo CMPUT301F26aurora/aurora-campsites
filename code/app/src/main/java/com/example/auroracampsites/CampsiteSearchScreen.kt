@@ -31,7 +31,7 @@ import androidx.compose.material3.AlertDialog
  * Role/Pattern: Composable UI Screen (View) for searching campsites.
  * Renders search input, filter trigger, and matching campsite results.
  *
- * Outstanding Issues: Live Firestore connectivity to replace sample data.
+ * May need testing for backend connectivity.
  */
 @Composable
 fun CampsiteSearchScreen(navController: NavController) {
@@ -41,6 +41,11 @@ fun CampsiteSearchScreen(navController: NavController) {
 
 
     // Master sample list with full campsite details
+    val allCampsites = remember {
+        CampsiteRepository()
+    }
+    //below is tester campsite code, block-commented out.
+    /*
     val allCampsites = remember {
         listOf(
             Campsite(
@@ -72,7 +77,7 @@ fun CampsiteSearchScreen(navController: NavController) {
                 isWaitlistFull = true,
                 isWinner = false,
                 isLoser = true
-                
+
             ),
             Campsite(
                 id = "3",
@@ -88,14 +93,16 @@ fun CampsiteSearchScreen(navController: NavController) {
                 isWaitlistFull = false,
                 isWinner = false,
                 isLoser = false
-                
+
             )
         )
     }
+     */
     // List displayed on screen
     val displayList = remember {
-        mutableStateListOf<Campsite>().apply { addAll(allCampsites) }
+        mutableStateListOf<Campsite>().apply { addAll(allCampsites.campsites) }
     }
+
     //Controls whether the filter dialog is visible
     var showFilterSheet by remember { mutableStateOf(false) }
     // State to track selected campsite for detailed view
@@ -114,10 +121,15 @@ fun CampsiteSearchScreen(navController: NavController) {
         return
     }
 
+    /**
+     * applyFilters: A helper function for filters
+     *
+     * Applies filters to a given list.
+     */
     //helper function to filter campsites based on all active criteria
     fun applyFilters() {
         displayList.clear()
-        val filtered = allCampsites.filter { campsite ->
+        val filtered = allCampsites.campsites.filter { campsite ->
             val matchesSearch = search.isBlank() ||
                     campsite.name.contains(search, ignoreCase = true) ||
                     campsite.location.contains(search, ignoreCase = true)
