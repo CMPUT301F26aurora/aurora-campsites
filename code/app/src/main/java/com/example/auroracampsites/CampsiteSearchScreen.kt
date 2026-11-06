@@ -27,11 +27,20 @@ import androidx.navigation.NavController
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
 
-/** U.S.01.01.01 - U.S.01.01.06
- * Role/Pattern: Composable UI Screen (View) for searching campsites.
- * Renders search input, filter trigger, and matching campsite results.
+/**
+ * Role/Pattern: Composable UI Screen (View) for campsite discovery.
  *
- * Outstanding Issues: Live Firestore connectivity to replace sample data.
+ * Purpose:
+ * - Allows users to search campsites by keyword and filter by province, date, and guest capacity.
+ * - Displays matching results in a scrollable list of cards.
+ *
+ * Navigation & Connections:
+ * - Connected from the main app navigation menu.
+ * - Connected to CampsiteDetailScreen by opening it when a campsite card is clicked.
+ * - Uses back navigation to return to the previous screen.
+ *
+ * Issues:
+ * - Needs live Firestore database connectivity to replace mock sample data.
  */
 @Composable
 fun CampsiteSearchScreen(navController: NavController) {
@@ -156,7 +165,6 @@ fun CampsiteSearchScreen(navController: NavController) {
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Title text
         Text(
             text = "Campsite Search",
             fontSize = 30.sp
@@ -231,7 +239,7 @@ fun CampsiteSearchScreen(navController: NavController) {
             }
         }
     }
-    // Filter Dialog (Screen with mini searchbars)
+    // Filter Dialog 
     if (showFilterSheet) {
         AlertDialog(
             onDismissRequest = { showFilterSheet = false },
