@@ -16,7 +16,7 @@ fun AppNav() {
 
     NavHost(
         navController = navController,
-        startDestination = "halfway_checkpoint"
+        startDestination = "campsite_search"
     ) {
 
 
