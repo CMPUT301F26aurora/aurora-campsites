@@ -221,7 +221,7 @@ fun CampsiteDetailScreen(
                 }
             }
         }
-
+        //TODO:BACKEND INTEGRATION FIREBASE. REMOVE THIS ROW ENTIRELY 
         // Simulation control buttons for testing win / lose
         Row(
             modifier = Modifier.padding(top = 8.dp),
