@@ -25,7 +25,17 @@ import androidx.compose.ui.unit.sp
 
 /**
  * Role/Pattern: Composable UI Screen (View) for displaying detailed campsite information.
- * Renders full campsite attributes including description, amenities, price, dates, and ratings.
+ *
+ * Purpose:
+ * - Displays full campsite details, amenities, pricing, and availability.
+ * - Manages waitlist sign-ups and lottery win/loss result notifications.
+ *
+ * Navigation & Connections:
+ * - Connected from CampsiteSearchScreen when a user selects a campsite card.
+ * - Uses the "Back to Search" action to return to the active search list.
+ *
+ * Issues:
+ * - Needs ViewModel and Firestore integration to save user waitlist and reservation entries.
  */
 @Composable
 fun CampsiteDetailScreen(
@@ -59,7 +69,7 @@ fun CampsiteDetailScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Campsite Name
+        //Campsite Name
         Text(
             text = campsite.name,
             fontSize = 28.sp
@@ -67,7 +77,6 @@ fun CampsiteDetailScreen(
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        // Location
         Text(
             text = "Location: ${campsite.location}",
             fontSize = 16.sp
@@ -75,7 +84,6 @@ fun CampsiteDetailScreen(
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        // Rating and Price row
         Text(
             text = "Rating: ${campsite.rating} / 5.0          •$${campsite.price} / night",
             fontSize = 16.sp
@@ -83,7 +91,6 @@ fun CampsiteDetailScreen(
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        // Capacity and Available Date
         Text(
             text = "Max Occupancy: ${campsite.maxOccupancy}          •Available: ${campsite.availableDate}",
             fontSize = 16.sp
@@ -91,7 +98,6 @@ fun CampsiteDetailScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Description Section
         Text(
             text = "About this Campsite",
             fontSize = 20.sp
@@ -104,7 +110,6 @@ fun CampsiteDetailScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Amenities Section
         Text(
             text = "Amenities",
             fontSize = 20.sp
@@ -165,10 +170,8 @@ fun CampsiteDetailScreen(
                 Text("No Active Lottery")
             }
         }
-        // --- US 01.03.01: Win Notification UI ---
 
-        // Winner Banner / Notification Card
-        // --- US 01.03.01 & US 01.03.02: Lottery Result Notifications ---
+        // US 01.03.01 & US 01.03.02: Lottery Result Notifications ---
         if (hasWonLottery) {
             Spacer(modifier = Modifier.height(16.dp))
             Card(
@@ -229,9 +232,9 @@ fun CampsiteDetailScreen(
                     hasWonLottery = !hasWonLottery
                     if (hasWonLottery) hasLostLottery = false // Reset lose state when winning
                 },
-                modifier = Modifier.testTag("simulateWinButton")
+                modifier = Modifier.testTag("WinButton")
             ) {
-                Text(if (hasWonLottery) "Reset Win" else "Simulate Win")
+                Text(if (hasWonLottery) "Reset Win" else " You Win")
             }
 
             Button(
@@ -239,9 +242,9 @@ fun CampsiteDetailScreen(
                     hasLostLottery = !hasLostLottery
                     if (hasLostLottery) hasWonLottery = false // Reset win state when losing
                 },
-                modifier = Modifier.testTag("simulateLoseButton")
+                modifier = Modifier.testTag("LoseButton")
             ) {
-                Text(if (hasLostLottery) "Reset Lose" else "Simulate Lose")
+                Text(if (hasLostLottery) "Reset Lose" else "You Lose")
             }
         }
 
