@@ -181,7 +181,7 @@ fun CampsiteDetailScreen(
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(
-                        text = "🎉 Congratulations! You won the lottery!",
+                        text = "Congratulations! You won the lottery!",
                         fontSize = 18.sp
                     )
                     Spacer(modifier = Modifier.height(4.dp))
