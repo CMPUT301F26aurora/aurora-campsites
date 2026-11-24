@@ -2,14 +2,16 @@ package com.example.auroracampsites.data.repository
 
 import com.example.auroracampsites.data.models.Campsite
 import com.google.firebase.Firebase
+import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.firestore
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.tasks.await
 
-class CampsiteRepository {
-    private val db = Firebase.firestore
+class CampsiteRepository (private val db: FirebaseFirestore = FirebaseFirestore.getInstance()){
+    //private val db = Firebase.firestore
+
     private val campsitesRef = db.collection("campsites")
 
     /**

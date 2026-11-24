@@ -4,14 +4,18 @@ import androidx.compose.runtime.mutableStateListOf
 import com.example.auroracampsites.data.models.User
 import com.example.auroracampsites.data.models.UserRole
 import com.google.firebase.Firebase
+import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
 import com.google.firebase.firestore.firestore
 
 /**
 - A class that handles firebase storage of users. Used to manage users information.
  */
-class UserRepository {
-    private val db = Firebase.firestore
+class UserRepository (
+    private val db: FirebaseFirestore = FirebaseFirestore.getInstance()
+){
+    //private val db = Firebase.firestore
+
     private val userRef = db.collection("users")
     private val _users = mutableStateListOf(
         User(
