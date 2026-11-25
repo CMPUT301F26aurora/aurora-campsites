@@ -33,14 +33,16 @@ data class Campsite (
     val ownerID: String = "",
     val rules: String = "",
     val cancellationPolicy: String = "",
-    val description: String = "Beautiful scenic campsite with modern facilities.",
-    val amenities: List<String> = listOf("Fire Pit", "Picnic Table", "Water Hookup"),
-    val hasActiveLottery: Boolean = true,
+    val description: String = "",
+    val amenities: List<String> = emptyList(),
+    val hasActiveLottery: Boolean = false,
     val isWaitlistFull: Boolean = false,
     val isWinner: Boolean = false,
     val isLoser: Boolean = false,
     val bookedDates: List<String> = emptyList(), // e.g "2026-11-10", "2026-11-11"
+    val activeLotteryId: String = "",
+    val isDeleted: Boolean = false,
     val availableDates: List<String> = emptyList(), // e.g "2026-11-12", "2026-11-13"
 
-    
+
 )

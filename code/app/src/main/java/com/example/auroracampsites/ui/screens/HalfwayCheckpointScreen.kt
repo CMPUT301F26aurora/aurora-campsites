@@ -29,15 +29,18 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
-import com.google.firebase.Firebase
-import com.google.firebase.firestore.firestore
+import androidx.compose.ui.platform.LocalContext
+import com.example.auroracampsites.data.session.UserSession
+import com.example.auroracampsites.data.models.UserRole
+import kotlinx.coroutines.CancellationException
+import com.example.auroracampsites.data.models.Lottery
+import com.example.auroracampsites.data.repository.LotteryRepository
 import com.example.auroracampsites.data.models.Campsite
 import com.example.auroracampsites.data.models.User
 import com.example.auroracampsites.data.repository.CampsiteRepository
 import com.example.auroracampsites.data.repository.UserRepository
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.tasks.await
 
 /*
 - CMPUT 301 Project Part 3 - Halfway checkpoint integrated with Firebase Firestore.
@@ -58,36 +61,54 @@ fun HalfwayCheckpointScreen(
     navController: NavController,
     modifier: Modifier = Modifier,
     campsiteRepository: CampsiteRepository = remember { CampsiteRepository() },
-    userRepository: UserRepository = remember { UserRepository() }
+    userRepository: UserRepository = remember { UserRepository() },
+    mode: String = "legacy"
 ) {
     val coroutineScope = rememberCoroutineScope()
+    val lotteryRepository = remember { LotteryRepository() }
+    var creatingLottery by remember { mutableStateOf(false) }
+    var drawingLottery by remember { mutableStateOf(false) }
+    var drawMessage by remember { mutableStateOf("") }
+    var createdLottery by remember { mutableStateOf<Lottery?>(null) }
 
     // Real-time and fetched data from Firestore
     var campsites by remember { mutableStateOf<List<Campsite>>(emptyList()) }
     var profiles by remember { mutableStateOf<List<User>>(emptyList()) }
 
-    // Current owner / admin ID standing in for the signed-in account
-    val currentOwnerId = "Admin1"
-
-    // Real-time listener for campsites from Firestore
-    LaunchedEffect(Unit) {
-        campsiteRepository.getCampsitesRealtime().collectLatest { fetchedCampsites ->
-            campsites = fetchedCampsites
-        }
-    }
-
-    // Fetch user profiles from Firestore
-    LaunchedEffect(Unit) {
+    val context = LocalContext.current
+    val currentOwnerId = remember(context) { UserSession.getCurrentUserId(context) }
+    var currentUser by remember(currentOwnerId) { mutableStateOf<User?>(null) }
+    var loading by remember { mutableStateOf(true) }
+    var accessError by remember { mutableStateOf("") }
+    var retry by remember { mutableStateOf(0) }
+    val isAdmin = currentUser?.role == UserRole.ADMIN
+    LaunchedEffect(currentOwnerId, retry) {
+        loading = true
+        currentUser = null
+        profiles = emptyList()
+        campsites = emptyList()
+        accessError = ""
         try {
-            val snapshot = Firebase.firestore.collection("users").get().await()
-            profiles = snapshot.toObjects(User::class.java)
-        } catch (e: Exception) {
+            val user = userRepository.getOrCreateUser(currentOwnerId)
+            currentUser = user
+            if (mode != "owner" && user.role == UserRole.ADMIN) profiles = userRepository.getAllUsers()
+            loading = false
+            if (mode == "admin" && user.role != UserRole.ADMIN) return@LaunchedEffect
+            val flow = if (mode != "owner" && user.role == UserRole.ADMIN) campsiteRepository.getCampsitesRealtime()
+            else campsiteRepository.getOwnerCampsitesRealtime(currentOwnerId)
+            flow.collectLatest { campsites = it }
+        } catch (e: CancellationException) { throw e }
+        catch (e: Exception) {
+            currentUser = null
             profiles = emptyList()
+            campsites = emptyList()
+            accessError = "Unable to load management data."
+            loading = false
         }
     }
 
     // Stores which page is visible: home, owner, lottery, created, adminCampsites, adminProfiles.
-    var page by remember { mutableStateOf("home") }
+    var page by remember(mode) { mutableStateOf(if (mode == "owner") "owner" else "home") }
 
     // Stores the campsite currently selected for creating a lottery.
     var selectedCampsiteId by remember { mutableStateOf("") }
@@ -109,18 +130,42 @@ fun HalfwayCheckpointScreen(
     var profileToDelete by remember { mutableStateOf<User?>(null) }
 
     // Finds the campsite selected for the lottery form.
-    val selectedCampsite = campsites.firstOrNull { it.id == selectedCampsiteId } ?: campsites.firstOrNull()
+    val selectedCampsite = campsites.firstOrNull { it.id == selectedCampsiteId && it.ownerID == currentOwnerId }
+
+    if (loading || currentUser == null) {
+        Column(modifier = modifier.fillMaxSize().padding(16.dp)) {
+            Text(if (loading) "Loading profile..." else accessError)
+            if (!loading) Button(onClick = { retry++ }) { Text("Retry") }
+            TextButton(onClick = { navController.popBackStack() }) { Text("Back") }
+        }
+        return
+    }
+
+    if (mode == "admin" && !isAdmin) {
+        Column(modifier = modifier.fillMaxSize().padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            DemoHeading("Admin")
+            Text("Access denied. Administrator permission is required.")
+            DemoBackButton("Back to Home") { navController.popBackStack() }
+        }
+        return
+    }
 
     // Confirmation dialog before removing a campsite (US 03.01.01).
-    if (campsiteToDelete != null) {
+    if (isAdmin && campsiteToDelete != null) {
         AlertDialog(
             onDismissRequest = { campsiteToDelete = null },
             title = { Text("Remove campsite?") },
-            text = { Text("This will permanently delete the campsite from Firestore.") },
+            text = { Text("This will hide the campsite from listings while preserving historical records.") },
             confirmButton = {
                 TextButton(onClick = {
                     coroutineScope.launch {
-                        campsiteToDelete?.let { campsiteRepository.deleteCampsite(it) }
+                        try {
+                            val target = requireNotNull(campsiteToDelete)
+                            campsiteRepository.deleteCampsite(target, currentOwnerId, admin = true)
+                            accessError = ""
+                        } catch (e: CancellationException) { throw e }
+                        catch (e: Exception) { accessError = e.message ?: "Unable to remove campsite." }
                         campsiteToDelete = null
                     }
                 }) { Text("Remove") }
@@ -132,7 +177,7 @@ fun HalfwayCheckpointScreen(
     }
 
     // Confirmation dialog before removing a profile (US 03.02.01).
-    if (profileToDelete != null) {
+    if (isAdmin && profileToDelete != null) {
         AlertDialog(
             onDismissRequest = { profileToDelete = null },
             title = { Text("Remove profile?") },
@@ -141,8 +186,12 @@ fun HalfwayCheckpointScreen(
                 TextButton(onClick = {
                     coroutineScope.launch {
                         profileToDelete?.let { user ->
-                            userRepository.deleteUser(user)
-                            profiles = profiles.filter { it.id != user.id }
+                            try {
+                                check(isAdmin && userRepository.getUserById(currentOwnerId)?.role == UserRole.ADMIN)
+                                userRepository.deleteProfile(user.id)
+                                profiles = profiles.filter { it.id != user.id }
+                            } catch (e: CancellationException) { throw e }
+                            catch (e: Exception) { accessError = "Unable to remove profile." }
                         }
                         profileToDelete = null
                     }
@@ -170,42 +219,103 @@ fun HalfwayCheckpointScreen(
         )
         HorizontalDivider()
 
-        when (page) {
+        if (accessError.isNotBlank()) Text(accessError, color = MaterialTheme.colorScheme.error)
+        when (if (!isAdmin && page.startsWith("admin")) "home" else page) {
             "home" -> {
-                DemoHeading("Campsite Owner Lottery and Admin Editing") //title changed from halfway cp to lottery editing and admin cmds page
-                Text("High level user access page")
-                Button(onClick = { page = "owner" }, modifier = Modifier.fillMaxWidth()) {
+                DemoHeading(if (mode == "admin") "Admin" else "Campsite Owner Lottery and Admin Editing")
+                if (mode != "admin") Text("Manage your campsites")
+                DemoBackButton("Back to Home") { navController.popBackStack() }
+                if (mode != "admin") Button(onClick = { page = "owner" }, modifier = Modifier.fillMaxWidth()) {
                     Text("Campsite Owner")
                 }
-                Button(onClick = { page = "adminCampsites" }, modifier = Modifier.fillMaxWidth()) {
-                    Text("Admin - Campsites")
+                if (isAdmin) Button(onClick = { page = "adminCampsites" }, modifier = Modifier.fillMaxWidth()) {
+                    Text("Manage Campsites")
                 }
-                Button(onClick = { page = "adminProfiles" }, modifier = Modifier.fillMaxWidth()) {
-                    Text("Admin - Profiles")
+                if (isAdmin) Button(onClick = { page = "adminProfiles" }, modifier = Modifier.fillMaxWidth()) {
+                    Text("Manage User Profiles")
                 }
             }
 
             "owner" -> {
                 // US 02.03.01: show campsites belonging to the owner.
-                DemoHeading("My Campsites")
-                val myCampsites = campsites.filter { it.ownerID == currentOwnerId || currentOwnerId == "Admin1" }
+                DemoHeading(if (mode == "owner") "Manage Lotteries" else "My Campsites")
+                val myCampsites = campsites.filter { it.ownerID == currentOwnerId }
                 if (myCampsites.isEmpty()) {
                     Text("No campsites found in database.")
                 }
+                if (drawMessage.isNotBlank()) Text(drawMessage)
                 myCampsites.forEach { campsite ->
                     DemoItemTitle(campsite.name)
                     Text("Location: ${campsite.location}")
-                    Button(
-                        onClick = {
-                            selectedCampsiteId = campsite.id
-                            formError = ""
-                            page = "lottery"
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    ) { Text("Create Lottery") }
+                    if (campsite.activeLotteryId.isBlank()) {
+                        Button(
+                            onClick = {
+                                selectedCampsiteId = campsite.id
+                                formError = ""
+                                page = "lottery"
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("Create Lottery") }
+                    } else {
+                        var round by remember(campsite.activeLotteryId) { mutableStateOf<Lottery?>(null) }
+                        var roundError by remember(campsite.activeLotteryId) { mutableStateOf("") }
+                        var refreshRound by remember(campsite.activeLotteryId) { mutableStateOf(0) }
+                        LaunchedEffect(campsite.activeLotteryId, refreshRound) {
+                            try {
+                                roundError = ""
+                                round = lotteryRepository.getLotteryById(campsite.activeLotteryId)
+                                if (round == null) roundError = "Lottery not found."
+                            } catch (e: CancellationException) { throw e }
+                            catch (e: Exception) { roundError = e.message ?: "Unable to load lottery." }
+                        }
+                        val active = round
+                        if (roundError.isNotBlank()) Text(roundError)
+                        if (active == null) {
+                            if (roundError.isBlank()) Text("Loading lottery...")
+                        } else {
+                            val today = java.time.LocalDate.now()
+                            val end = runCatching { java.time.LocalDate.parse(active.bookingEnd) }.getOrNull()
+                            val registrationEndDate = runCatching { java.time.LocalDate.parse(active.registrationEnd) }.getOrNull()
+                            val expired = end != null && today.isAfter(end)
+                            Text("Lottery status: ${active.status}")
+                            Text("Booking ends: ${active.bookingEnd}")
+                            val canDraw = active.status == "REGISTRATION" && !expired && end != null &&
+                                    registrationEndDate != null && today.isAfter(registrationEndDate)
+                            val canClose = expired && active.status in setOf("REGISTRATION", "DRAWN")
+                            if (canDraw || canClose) {
+                                Button(enabled = !drawingLottery, onClick = {
+                                    drawingLottery = true
+                                    drawMessage = ""
+                                    coroutineScope.launch {
+                                        try {
+                                            if (canClose) {
+                                                lotteryRepository.closeLottery(campsite.id, currentOwnerId, active.id)
+                                                drawMessage = "Lottery closed. You can create a new lottery."
+                                            } else {
+                                                val count = lotteryRepository.drawLottery(campsite.id, currentOwnerId, active.id)
+                                                drawMessage = "Lottery drawn: $count winner(s)."
+                                            }
+                                            refreshRound++
+                                        } catch (e: CancellationException) { throw e }
+                                        catch (e: Exception) { drawMessage = e.message ?: "Unable to update lottery." }
+                                        finally { drawingLottery = false }
+                                    }
+                                }, modifier = Modifier.fillMaxWidth()) {
+                                    Text(if (drawingLottery) "Working..." else if (canClose) "Close Lottery" else "Draw Lottery")
+                                }
+                            } else if (active.status == "DRAWN") {
+                                Text("Booking period must end before closing this lottery.")
+                            } else if (active.status == "REGISTRATION") {
+                                Text("Registration must end before drawing this lottery.")
+                            }
+                        }
+                        TextButton(onClick = { refreshRound++ }, enabled = !drawingLottery) { Text("Refresh Lottery") }
+                    }
                     HorizontalDivider()
                 }
-                DemoBackButton("Back to Home") { page = "home" }
+                DemoBackButton(if (mode == "owner") "Back to Campsite Owner" else "Back to Home") {
+                    if (mode == "owner") navController.popBackStack() else page = "home"
+                }
             }
 
             "lottery" -> {
@@ -233,7 +343,7 @@ fun HalfwayCheckpointScreen(
 
                 Button(
                     onClick = {
-                        val winners = winnersText.toIntOrNull()
+                        val winners = winnersText.trim().toIntOrNull()
                         val dateFormat = Regex("\\d{4}-\\d{2}-\\d{2}")
                         val dates = listOf(registrationStart, registrationEnd, bookingStart, bookingEnd)
                         formError = when {
@@ -245,26 +355,46 @@ fun HalfwayCheckpointScreen(
                             else -> ""
                         }
                         if (formError.isEmpty() && selectedCampsite != null && winners != null) {
+                            val configuration = Lottery(
+                                campsiteId = selectedCampsite.id,
+                                ownerId = currentOwnerId,
+                                registrationStart = registrationStart,
+                                registrationEnd = registrationEnd,
+                                bookingStart = bookingStart,
+                                bookingEnd = bookingEnd,
+                                numberOfWinners = winners
+                            )
+                            creatingLottery = true
                             coroutineScope.launch {
-                                // Persist lottery details via CampsiteRepository
-                                campsiteRepository.addCampsite(selectedCampsite)
-                                page = "created"
+                                try {
+                                    val id = lotteryRepository.createLottery(configuration)
+                                    createdLottery = configuration.copy(id = id)
+                                    page = "created"
+                                } catch (e: CancellationException) {
+                                    throw e
+                                } catch (e: Exception) {
+                                    formError = e.message ?: "Unable to create lottery."
+                                } finally {
+                                    creatingLottery = false
+                                }
                             }
                         }
                     },
+                    enabled = !creatingLottery,
                     modifier = Modifier.fillMaxWidth()
-                ) { Text("Create Lottery") }
-                DemoBackButton("Back to My Campsites") { page = "owner" }
+                ) { Text(if (creatingLottery) "Saving..." else "Create Lottery") }
+                if (!creatingLottery) DemoBackButton("Back to My Campsites") { page = "owner" }
             }
 
             "created" -> {
                 DemoHeading("Lottery Created")
                 Text("The lottery has been saved to Firebase Firestore.")
-                if (selectedCampsite != null) {
-                    Text("Campsite ID: ${selectedCampsite.id}")
-                    Text("Registration: $registrationStart to $registrationEnd")
-                    Text("Booking: $bookingStart to $bookingEnd")
-                    Text("Number of winners: $winnersText")
+                createdLottery?.let { lottery ->
+                    Text("Lottery ID: ${lottery.id}")
+                    Text("Campsite ID: ${lottery.campsiteId}")
+                    Text("Registration: ${lottery.registrationStart} to ${lottery.registrationEnd}")
+                    Text("Booking: ${lottery.bookingStart} to ${lottery.bookingEnd}")
+                    Text("Number of winners: ${lottery.numberOfWinners}")
                 }
                 DemoBackButton("Back to My Campsites") { page = "owner" }
             }

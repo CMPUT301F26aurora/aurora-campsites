@@ -35,7 +35,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.example.auroracampsites.data.models.User
-import com.example.auroracampsites.data.models.UserRole
+import androidx.compose.ui.platform.LocalContext
+import com.example.auroracampsites.data.session.UserSession
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
 import com.example.auroracampsites.data.repository.UserRepository
 
 /**
@@ -60,78 +63,87 @@ data class ProfileSettingsData(
 fun ProfileManagementScreen(
     navController: NavController,
     modifier: Modifier = Modifier,
-    currentUser: User = User(
-        id = "Admin1",
-        username = "admin_user",
-        email = "placeholder@email.com",
-        phoneNumber = "582-110-2224",
-        role = UserRole.ADMIN,
-        notificationsEnabled = true
-    )
+    currentUser: User? = null
 ) {
-    val userRepository = remember { UserRepository() }
+    val context = LocalContext.current
+    val userId = remember(context) { UserSession.getCurrentUserId(context) }
+    val repository = remember { UserRepository() }
+    val scope = rememberCoroutineScope()
+    var user by remember(userId) { mutableStateOf<User?>(null) }
+    var loading by remember { mutableStateOf(true) }
+    var busy by remember { mutableStateOf(false) }
+    var message by remember { mutableStateOf("") }
+    var retry by remember { mutableStateOf(0) }
+    var deleting by remember { mutableStateOf(false) }
 
-    var showDeleteConfirmation by remember { mutableStateOf(false) }
-    var showOptOutDialog by remember { mutableStateOf(false) }
-
-    if (showOptOutDialog) {
-        AlertDialog(
-            onDismissRequest = { showOptOutDialog = false },
-            title = { Text("Notification Settings", fontWeight = FontWeight.Bold) },
-            text = { Text("You have opted out of notifications!") },
-            confirmButton = {
-                Button(
-                    onClick = { showOptOutDialog = false },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color.Black)
-                ) {
-                    Text("OK", color = Color.White)
-                }
-            }
-        )
+    LaunchedEffect(userId, retry) {
+        loading = true
+        message = ""
+        try {
+            user = repository.getOrCreateUser(userId)
+        } catch (e: CancellationException) { throw e }
+        catch (e: Exception) { message = "Unable to load profile." }
+        finally { loading = false }
     }
 
-    if (showDeleteConfirmation) {
+    val profile = user
+    fun update(field: String, value: Any) {
+        if (busy) return
+        busy = true
+        message = ""
+        scope.launch {
+            try {
+                user = repository.updateProfileField(userId, field, value)
+                message = "Profile updated."
+            } catch (e: CancellationException) { throw e }
+            catch (e: Exception) { message = "Unable to update profile. Please retry." }
+            finally { busy = false }
+        }
+    }
+    if (loading || profile == null) {
+        Column(modifier.fillMaxSize().padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+            if (loading) CircularProgressIndicator() else {
+                Text(message)
+                Button(onClick = { retry++ }) { Text("Retry") }
+            }
+            Button(onClick = { navController.popBackStack() }) { Text("Back") }
+        }
+    } else if (deleting) {
         DeleteProfileScreen(
             modifier = modifier,
+            busy = busy,
+            message = message,
             onConfirmDelete = {
-                userRepository.deleteUser(currentUser)
-                navController.popBackStack()
+                if (!busy) {
+                    busy = true
+                    message = ""
+                    scope.launch {
+                        try {
+                            repository.deleteProfile(userId)
+                            navController.popBackStack()
+                        } catch (e: CancellationException) { throw e }
+                        catch (e: Exception) { message = "Unable to delete profile." }
+                        finally { busy = false }
+                    }
+                }
             },
-            onGoBack = {
-                showDeleteConfirmation = false
-            }
+            onGoBack = { deleting = false; message = "" }
         )
     } else {
         ProfileSettingsScreen(
             navController = navController,
             modifier = modifier,
-            profile = ProfileSettingsData(
-                name = currentUser.username,
-                email = currentUser.email,
-                phoneNumber = currentUser.phoneNumber
-            ),
-            onUpdateName = { newName ->
-                userRepository.updateUserUsername(currentUser, newName)
-            },
-            onUpdateEmail = { newEmail ->
-                userRepository.updateUserEmail(currentUser, newEmail)
-            },
-            onUpdatePhone = { newPhone ->
-                userRepository.updateUserPhoneNumber(currentUser, newPhone)
-            },
-            onBack = {
-                navController.popBackStack()
-            },
-            onAppPolicy = {
-                navController.navigate("app_policy")
-            },
-            onNotificationOptOut = {
-                userRepository.updateUserNotifs(currentUser)
-                showOptOutDialog = true
-            },
-            onDeleteClick = {
-                showDeleteConfirmation = true
-            }
+            profile = ProfileSettingsData(profile.username, profile.email, profile.phoneNumber),
+            onUpdateName = { update("username", it) },
+            onUpdateEmail = { update("email", it) },
+            onUpdatePhone = { update("phoneNumber", it) },
+            onBack = { if (!busy) navController.popBackStack() },
+            onAppPolicy = { if (!busy) navController.navigate("app_policy") },
+            onNotificationOptOut = { update("notificationsEnabled", !profile.notificationsEnabled) },
+            onDeleteClick = { deleting = true; message = "" },
+            busy = busy,
+            backendMessage = message,
+            notificationsEnabled = profile.notificationsEnabled
         )
     }
 }
@@ -149,7 +161,10 @@ fun ProfileSettingsScreen(
     onBack: () -> Unit = {},
     onAppPolicy: () -> Unit = {},
     onNotificationOptOut: () -> Unit = {},
-    onDeleteClick: () -> Unit = {}
+    onDeleteClick: () -> Unit = {},
+    busy: Boolean = false,
+    backendMessage: String = "",
+    notificationsEnabled: Boolean = true
 ) {
     var currentName by remember(profile.name) { mutableStateOf(profile.name) }
     var currentEmail by remember(profile.email) { mutableStateOf(profile.email) }
@@ -294,11 +309,9 @@ fun ProfileSettingsScreen(
                         value = newName,
                         onValueChange = { newName = it },
                         onUpdate = {
-                            if (newName.isNotBlank()) {
+                            if (!busy && newName.isNotBlank()) {
                                 onUpdateName(newName.trim())
-                                currentName = newName.trim()
-                                newName = ""
-                                message = "Name updated in UI."
+                                message = ""
                             }
                         }
                     )
@@ -313,13 +326,11 @@ fun ProfileSettingsScreen(
                         onUpdate = {
                             val email = newEmail.trim()
                             if (
-                                email.contains("@") &&
+                                !busy && email.contains("@") &&
                                 email.substringAfter("@").contains(".")
                             ) {
                                 onUpdateEmail(email)
-                                currentEmail = email
-                                newEmail = ""
-                                message = "Email updated in UI."
+                                message = ""
                             } else {
                                 message = "Please enter a valid email."
                             }
@@ -334,22 +345,20 @@ fun ProfileSettingsScreen(
                         onValueChange = { newPhone = it },
                         keyboardType = KeyboardType.Phone,
                         onUpdate = {
-                            if (newPhone.isNotBlank()) {
+                            if (!busy && newPhone.isNotBlank()) {
                                 onUpdatePhone(newPhone.trim())
-                                currentPhone = newPhone.trim()
-                                newPhone = ""
-                                message = "Phone updated in UI."
+                                message = ""
                             }
                         }
                     )
                 }
             }
 
-            if (message.isNotEmpty()) {
+            if (message.isNotEmpty() || backendMessage.isNotEmpty() || busy) {
                 Spacer(Modifier.height(16.dp))
 
                 Text(
-                    text = message,
+                    text = if (busy) "Saving..." else message.ifEmpty { backendMessage },
                     fontSize = 12.sp,
                     color = Color.DarkGray
                 )
@@ -369,7 +378,7 @@ fun ProfileSettingsScreen(
                 )
 
                 ProfileBottomButton(
-                    text = "Notif Opt-Out",
+                    text = if (notificationsEnabled) "Notif Opt-Out" else "Notif Opt-In",
                     onClick = onNotificationOptOut
                 )
 
@@ -377,7 +386,7 @@ fun ProfileSettingsScreen(
 
                 ProfileBottomButton(
                     text = "Delete Profile",
-                    onClick = onDeleteClick,
+                    onClick = { if (!busy) onDeleteClick() },
                     textColor = Color.Red
                 )
             }
@@ -482,7 +491,9 @@ private fun ProfileBottomButton(
 fun DeleteProfileScreen(
     modifier: Modifier = Modifier,
     onConfirmDelete: () -> Unit = {},
-    onGoBack: () -> Unit = {}
+    onGoBack: () -> Unit = {},
+    busy: Boolean = false,
+    message: String = ""
 ) {
     Surface(
         modifier = modifier.fillMaxSize(),
@@ -520,10 +531,13 @@ fun DeleteProfileScreen(
                 fontWeight = FontWeight.Bold
             )
 
+            if (message.isNotBlank()) Text(message, color = Color.Red)
+            if (busy) CircularProgressIndicator()
             Spacer(Modifier.height(60.dp))
 
             Button(
                 onClick = onConfirmDelete,
+                enabled = !busy,
                 modifier = Modifier
                     .fillMaxWidth(0.8f)
                     .height(70.dp),
@@ -544,6 +558,7 @@ fun DeleteProfileScreen(
 
             Button(
                 onClick = onGoBack,
+                enabled = !busy,
                 modifier = Modifier
                     .fillMaxWidth(0.8f)
                     .height(70.dp),

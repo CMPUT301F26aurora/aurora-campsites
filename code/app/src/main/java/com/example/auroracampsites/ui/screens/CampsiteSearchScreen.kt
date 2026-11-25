@@ -1,5 +1,6 @@
 package com.example.auroracampsites.ui.screens
 
+import android.net.Uri
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -53,20 +54,10 @@ fun CampsiteSearchScreen(navController: NavController) {
     }
 
     var showFilterSheet by remember { mutableStateOf(false) }
-    var selectedCampsite by remember { mutableStateOf<Campsite?>(null) }
 
     var provinceFilter by remember { mutableStateOf("") }
     var dateFilter by remember { mutableStateOf("") }
     var guestsFilter by remember { mutableStateOf("") }
-
-    selectedCampsite?.let { campsite ->
-        CampsiteDetailsScreen(
-            navController = navController,
-            campsite = campsite,
-            onBackClick = { selectedCampsite = null }
-        )
-        return
-    }
 
     fun applyFilters() {
         displayList.clear()
@@ -153,7 +144,11 @@ fun CampsiteSearchScreen(navController: NavController) {
                     Spacer(modifier = Modifier.height(12.dp))
 
                     Card(
-                        onClick = { selectedCampsite = campsite },
+                        onClick = {
+                            if (campsite.id.isNotBlank()) {
+                                navController.navigate("campsite_details/${Uri.encode(campsite.id)}")
+                            }
+                        },
                         modifier = Modifier
                             .fillMaxWidth()
                             .testTag("campsiteCard_${campsite.id}")

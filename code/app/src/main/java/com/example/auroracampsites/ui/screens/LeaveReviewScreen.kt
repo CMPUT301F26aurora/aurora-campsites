@@ -8,7 +8,7 @@ package com.example.auroracampsites.ui.screens
  * Allows users to rate a campsite from 1 to 5 stars
  * and optionally write a review.
  *
- * (UI only: Firebase integration pending)
+ * Firebase review submission uses the reservation ID.
  */
 
 import androidx.compose.foundation.BorderStroke
@@ -27,6 +27,14 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
+import androidx.compose.ui.platform.LocalContext
+import com.example.auroracampsites.data.session.UserSession
+import com.example.auroracampsites.data.repository.ReservationRepo
+import com.example.auroracampsites.data.repository.RatingRepository
+import com.example.auroracampsites.data.models.Reservation
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
+import java.time.LocalDate
 
 /**
  * Represents a campsite review submitted by a user, containing the target
@@ -49,12 +57,15 @@ fun LeaveReviewScreen(
     campsiteId: String = "",
     campsiteName: String = "",
     onBack: () -> Unit = { navController.popBackStack() }, // <--- Pops back to past reservations
-    onPostReview: (CampsiteReviewData) -> Unit = {}
+    onPostReview: (suspend (CampsiteReviewData) -> Unit)? = null
 ) {
     var selectedRating by remember { mutableIntStateOf(0) }
     var reviewText by remember { mutableStateOf("") }
     var showError by remember { mutableStateOf(false) }
     var submitted by remember { mutableStateOf(false) }
+    var busy by remember { mutableStateOf(false) }
+    var saveError by remember { mutableStateOf("") }
+    val scope = rememberCoroutineScope()
 
     Surface(
         modifier = modifier.fillMaxSize(),
@@ -122,7 +133,7 @@ fun LeaveReviewScreen(
                         text = if (star <= selectedRating) "★" else "☆",
                         fontSize = 46.sp,
                         color = Color(0xFF222222),
-                        modifier = Modifier.clickable {
+                        modifier = Modifier.clickable(enabled = !busy && !submitted) {
                             selectedRating = star
                             showError = false
                         }
@@ -134,6 +145,7 @@ fun LeaveReviewScreen(
 
             OutlinedTextField(
                 value = reviewText,
+                enabled = !busy && !submitted,
                 onValueChange = { reviewText = it },
                 modifier = Modifier
                     .fillMaxWidth()
@@ -162,10 +174,12 @@ fun LeaveReviewScreen(
                 )
             }
 
+            if (busy) CircularProgressIndicator()
+            if (saveError.isNotBlank()) Text(saveError, color = Color.Red)
             if (submitted) {
                 Spacer(Modifier.height(10.dp))
                 Text(
-                    text = "Review submitted for processing.",
+                    text = "Review saved successfully.",
                     color = Color.DarkGray,
                     fontSize = 13.sp
                 )
@@ -174,6 +188,7 @@ fun LeaveReviewScreen(
             Spacer(Modifier.height(18.dp))
 
             OutlinedButton(
+                enabled = !busy && !submitted && onPostReview != null,
                 onClick = {
                     if (selectedRating == 0) {
                         showError = true
@@ -186,13 +201,18 @@ fun LeaveReviewScreen(
                             comment = reviewText.trim()
                         )
 
-                        // TODO(FIREBASE): Save the review to
-                        // Firestore with the authenticated user ID.
-                        // Verify campsite and review eligibility.
-                        // Wait for success before showing confirmation.
-                        onPostReview(review)
-
-                        submitted = true
+                        if (!busy && !submitted && onPostReview != null) {
+                            busy = true
+                            saveError = ""
+                            scope.launch {
+                                try {
+                                    onPostReview(review)
+                                    submitted = true
+                                } catch (e: CancellationException) { throw e }
+                                catch (e: Exception) { saveError = "Unable to save review. It may already exist." }
+                                finally { busy = false }
+                            }
+                        }
                     }
                 },
                 modifier = Modifier
@@ -211,6 +231,49 @@ fun LeaveReviewScreen(
                     fontSize = 12.sp
                 )
             }
+        }
+    }
+}
+
+@Composable
+fun ReservationReviewScreen(navController: NavController, reservationId: String) {
+    val context = LocalContext.current
+    val userId = remember(context) { UserSession.getCurrentUserId(context) }
+    val reservations = remember { ReservationRepo() }
+    val ratings = remember { RatingRepository() }
+    var reservation by remember(reservationId) { mutableStateOf<Reservation?>(null) }
+    var loading by remember(reservationId) { mutableStateOf(true) }
+    var error by remember(reservationId) { mutableStateOf("") }
+    var retry by remember { mutableIntStateOf(0) }
+    LaunchedEffect(reservationId, userId, retry) {
+        loading = true
+        error = ""
+        reservation = null
+        try {
+            val record = reservations.getReservationById(reservationId, userId)
+            if (record == null || record.status != "ACTIVE" ||
+                !LocalDate.parse(record.endDate).isBefore(LocalDate.now()) || record.campsiteId.isBlank()) {
+                error = "This reservation is not eligible for a review."
+            } else if (ratings.hasReview(reservationId)) {
+                error = "You have already reviewed this reservation."
+            } else reservation = record
+        } catch (e: CancellationException) { throw e }
+        catch (e: Exception) { error = "Unable to load review details." }
+        finally { loading = false }
+    }
+    val record = reservation
+    if (!loading && record != null) {
+        LeaveReviewScreen(navController = navController, campsiteId = record.campsiteId,
+            campsiteName = record.campsiteName,
+            onPostReview = { ratings.postReview(reservationId, userId, it.rating, it.comment) })
+    } else {
+        Column(Modifier.fillMaxSize().padding(20.dp),
+            verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
+            if (loading) CircularProgressIndicator() else {
+                Text(error)
+                Button(onClick = { retry++ }) { Text("Retry") }
+            }
+            Button(onClick = { navController.popBackStack() }) { Text("Back") }
         }
     }
 }

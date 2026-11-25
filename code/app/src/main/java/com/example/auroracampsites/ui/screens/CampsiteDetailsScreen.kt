@@ -3,7 +3,6 @@ package com.example.auroracampsites.ui.screens
 import android.util.Log
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -13,14 +12,19 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.Text
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -28,6 +32,10 @@ import androidx.navigation.NavController
 import com.example.auroracampsites.data.models.Campsite
 import com.example.auroracampsites.data.models.Reservation
 import com.example.auroracampsites.data.repository.ReservationRepo
+import com.example.auroracampsites.data.repository.UserRepository
+import com.example.auroracampsites.data.repository.WaitListRepository
+import com.example.auroracampsites.data.session.UserSession
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 /**
@@ -49,25 +57,53 @@ fun CampsiteDetailsScreen(
 ) {
     val coroutineScope = rememberCoroutineScope()
     val reservationRepository = remember { ReservationRepo() }
-    val currentUserId = "user_123"
+    val context = LocalContext.current
+    val currentUserId = remember(context) { UserSession.getCurrentUserId(context) }
+    val userRepository = remember { UserRepository() }
+    val waitListRepository = remember { WaitListRepository() }
 
-    // Key all state variables to campsite.id so they reset when opening a different campsite
-    var hasJoinedLottery by remember(campsite.id) { mutableStateOf(false) }
-    var showLeaveConfirmation by remember { mutableStateOf(false) }
-
-    // US 01.03.01 - Win Notification & Reservation States
-    var hasWonLottery by remember(campsite.id) { mutableStateOf(campsite.isWinner) }
-    var showReservationDialog by remember { mutableStateOf(false) }
-
-    // FIXED: Use a String instead of passing the whole List<String>
-    var selectedBookingDate by remember(campsite.id) { mutableStateOf(campsite.availableDates.firstOrNull() ?: "") }
-
+    var activeLottery by remember(campsite.id) { mutableStateOf<com.example.auroracampsites.data.models.Lottery?>(null) }
+    val registrationOpen = activeLottery?.let { waitListRepository.registrationOpen(it) } == true
+    var waitListStatus by remember(campsite.id, currentUserId) { mutableStateOf<String?>(null) }
+    var isWaitListLoading by remember(campsite.id) { mutableStateOf(true) }
+    var isWaitListSubmitting by remember(campsite.id) { mutableStateOf(false) }
+    var waitListError by remember(campsite.id) { mutableStateOf("") }
+    var statusLoaded by remember(campsite.id) { mutableStateOf(false) }
+    var refreshCount by remember(campsite.id) { mutableStateOf(0) }
+    val hasJoinedLottery = waitListStatus == "Waiting"
+    val hasWonLottery = statusLoaded && waitListStatus == "Won"
+    val hasLostLottery = statusLoaded && waitListStatus == "Lost"
+    var showLeaveConfirmation by remember(campsite.id) { mutableStateOf(false) }
+    var showReservationDialog by remember(campsite.id) { mutableStateOf(false) }
+    var selectedBookingDate by remember(campsite.id) {
+        mutableStateOf(campsite.availableDates.firstOrNull { it !in campsite.bookedDates } ?: "")
+    }
     var isBookingConfirmed by remember(campsite.id) { mutableStateOf(false) }
-    var hasLostLottery by remember(campsite.id) { mutableStateOf(campsite.isLoser) }
+    var isBookingSubmitting by remember(campsite.id) { mutableStateOf(false) }
+    var bookingError by remember(campsite.id) { mutableStateOf("") }
+
+    LaunchedEffect(campsite.id, currentUserId, refreshCount) {
+        isWaitListLoading = true
+        statusLoaded = false
+        waitListError = ""
+        try {
+            require(campsite.id.isNotBlank())
+            activeLottery = waitListRepository.getActiveLottery(campsite.id)
+            waitListStatus = activeLottery?.let { waitListRepository.getWaitListEntry(campsite.id, currentUserId, it.id)?.status }
+            statusLoaded = true
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            waitListError = if (campsite.id.isBlank()) "Invalid campsite." else "Unable to load waitlist status."
+        } finally {
+            isWaitListLoading = false
+        }
+    }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .verticalScroll(rememberScrollState())
             .padding(16.dp)
     ) {
         Spacer(modifier = Modifier.height(16.dp))
@@ -138,20 +174,42 @@ fun CampsiteDetailsScreen(
         Spacer(modifier = Modifier.height(24.dp))
 
         // Waitlist / Lottery Action Section
-        if (campsite.hasActiveLottery && (!campsite.isWaitlistFull || hasJoinedLottery)) {
+        if (activeLottery != null && registrationOpen) {
             Button(
                 onClick = {
                     if (hasJoinedLottery) {
                         showLeaveConfirmation = true
-                    } else {
-                        hasJoinedLottery = true
+                    } else if (statusLoaded && !isWaitListSubmitting) {
+                        isWaitListSubmitting = true
+                        waitListError = ""
+                        coroutineScope.launch {
+                            try {
+                                userRepository.getOrCreateUser(currentUserId)
+                                waitListRepository.joinWaitList(campsite.id, currentUserId, requireNotNull(activeLottery).id)
+                                waitListStatus = waitListRepository.getWaitListEntry(campsite.id, currentUserId, requireNotNull(activeLottery).id)?.status
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (e: Exception) {
+                                statusLoaded = false
+                                waitListError = "Unable to join waitlist. Refresh your status."
+                            } finally {
+                                isWaitListSubmitting = false
+                            }
+                        }
                     }
                 },
+                enabled = statusLoaded && !isWaitListLoading && !isWaitListSubmitting &&
+                        (waitListStatus == null || hasJoinedLottery),
                 modifier = Modifier
                     .fillMaxWidth()
                     .testTag(if (hasJoinedLottery) "leaveWaitlistButton" else "joinWaitlistButton")
             ) {
-                Text(if (hasJoinedLottery) "Leave Waitlist" else "Join Waitlist")
+                Text(when {
+                    isWaitListLoading -> "Loading..."
+                    isWaitListSubmitting -> "Please wait..."
+                    hasJoinedLottery -> "Leave Waitlist"
+                    else -> "Join Waitlist"
+                })
             }
 
             if (hasJoinedLottery) {
@@ -162,7 +220,7 @@ fun CampsiteDetailsScreen(
                     modifier = Modifier.testTag("waitlistConfirmationText")
                 )
             }
-        } else if (campsite.hasActiveLottery) {
+        } else if (activeLottery != null) {
             Button(
                 onClick = {},
                 enabled = false,
@@ -170,7 +228,7 @@ fun CampsiteDetailsScreen(
                     .fillMaxWidth()
                     .testTag("waitlistFullButton")
             ) {
-                Text("Waitlist Full")
+                Text("Registration Closed")
             }
         } else {
             Button(
@@ -182,6 +240,16 @@ fun CampsiteDetailsScreen(
             ) {
                 Text("No Active Lottery")
             }
+        }
+
+        if (waitListError.isNotEmpty()) {
+            Text(waitListError, color = MaterialTheme.colorScheme.error)
+        }
+        if (campsite.id.isNotBlank()) {
+            Button(
+                onClick = { refreshCount++ },
+                enabled = !isWaitListLoading && !isWaitListSubmitting && !isBookingSubmitting
+            ) { Text("Refresh lottery status") }
         }
 
         // US 01.03.01 & US 01.03.02: Lottery Result Notifications ---
@@ -205,7 +273,7 @@ fun CampsiteDetailsScreen(
                     Spacer(modifier = Modifier.height(12.dp))
                     Button(
                         onClick = { showReservationDialog = true },
-                        enabled = !isBookingConfirmed,
+                        enabled = !isBookingConfirmed && !isWaitListLoading && !isWaitListSubmitting,
                         modifier = Modifier
                             .fillMaxWidth()
                             .testTag("claimReservationButton")
@@ -235,46 +303,38 @@ fun CampsiteDetailsScreen(
             }
         }
 
-        // Simulation control buttons for testing win / lose
-        Row(
-            modifier = Modifier.padding(top = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Button(
-                onClick = {
-                    hasWonLottery = !hasWonLottery
-                    if (hasWonLottery) hasLostLottery = false
-                },
-                modifier = Modifier.testTag("WinButton")
-            ) {
-                Text(if (hasWonLottery) "Reset Win" else " You Win")
-            }
-
-            Button(
-                onClick = {
-                    hasLostLottery = !hasLostLottery
-                    if (hasLostLottery) hasWonLottery = false
-                },
-                modifier = Modifier.testTag("LoseButton")
-            ) {
-                Text(if (hasLostLottery) "Reset Lose" else "You Lose")
-            }
-        }
     } // END OF MAIN COLUMN
 
 
     // Leave Waitlist Confirmation Dialog
     if (showLeaveConfirmation) {
         AlertDialog(
-            onDismissRequest = { showLeaveConfirmation = false },
+            onDismissRequest = { if (!isWaitListSubmitting) showLeaveConfirmation = false },
             title = { Text("Leave Waitlist") },
             text = { Text("Are you sure you want to leave the waitlist for ${campsite.name}?") },
             confirmButton = {
                 Button(
                     onClick = {
-                        hasJoinedLottery = false
-                        showLeaveConfirmation = false
+                        if (!isWaitListSubmitting) {
+                            isWaitListSubmitting = true
+                            waitListError = ""
+                            coroutineScope.launch {
+                                try {
+                                    waitListRepository.leaveWaitList(campsite.id, currentUserId, requireNotNull(activeLottery).id)
+                                    waitListStatus = null
+                                } catch (e: CancellationException) {
+                                    throw e
+                                } catch (e: Exception) {
+                                    statusLoaded = false
+                                    waitListError = "Unable to leave waitlist. Refresh your status."
+                                } finally {
+                                    isWaitListSubmitting = false
+                                    showLeaveConfirmation = false
+                                }
+                            }
+                        }
                     },
+                    enabled = !isWaitListSubmitting,
                     modifier = Modifier.testTag("confirmLeaveButton")
                 ) {
                     Text("Confirm")
@@ -283,6 +343,7 @@ fun CampsiteDetailsScreen(
             dismissButton = {
                 Button(
                     onClick = { showLeaveConfirmation = false },
+                    enabled = !isWaitListSubmitting,
                     modifier = Modifier.testTag("cancelLeaveButton")
                 ) {
                     Text("Cancel")
@@ -294,7 +355,7 @@ fun CampsiteDetailsScreen(
     // US 01.03.01 - Reservation Confirmation Dialog
     if (showReservationDialog) {
         AlertDialog(
-            onDismissRequest = { showReservationDialog = false },
+            onDismissRequest = { if (!isBookingSubmitting) showReservationDialog = false },
             title = { Text("Select Reservation Date") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -303,48 +364,82 @@ fun CampsiteDetailsScreen(
                     Spacer(modifier = Modifier.height(8.dp))
                     TextField(
                         value = selectedBookingDate,
+                        enabled = !isBookingSubmitting,
                         onValueChange = { newValue -> selectedBookingDate = newValue },
                         label = { Text("Reservation Date (YYYY-MM-DD)") },
                         modifier = Modifier
                             .fillMaxWidth()
                             .testTag("reservationDateInput")
                     )
+                    if (bookingError.isNotEmpty()) {
+                        Text(bookingError, color = MaterialTheme.colorScheme.error)
+                    }
                 }
             },
             confirmButton = {
                 Button(
                     onClick = {
-                        isBookingConfirmed = true
-                        showReservationDialog = false
-
-                        coroutineScope.launch {
-                            val newReservation = Reservation(
-                                userId = currentUserId,
-                                campsiteId = campsite.id,
-                                campsiteName = campsite.name,
-                                location = campsite.location,
-                                maximumOccupancy = campsite.maxOccupancy,
-                                price = campsite.price,
-                                startDate = selectedBookingDate,
-                                endDate = selectedBookingDate,
-                                status = "ACTIVE"
-                            )
-                            try {
-                                reservationRepository.addReservation(newReservation)
-                            } catch (e: Exception) {
-                                Log.e("CampsiteDetailsScreen", "Error adding reservation", e)
+                        if (!hasWonLottery || isWaitListLoading) {
+                            bookingError = "You must win the lottery before booking."
+                        } else if (campsite.id.isBlank() ||
+                            selectedBookingDate !in campsite.availableDates ||
+                            selectedBookingDate in campsite.bookedDates
+                        ) {
+                            bookingError = "Please select a valid available date."
+                        } else if (!isBookingSubmitting && !isBookingConfirmed) {
+                            isBookingSubmitting = true
+                            bookingError = ""
+                            val date = selectedBookingDate
+                            coroutineScope.launch {
+                                try {
+                                    userRepository.getOrCreateUser(currentUserId)
+                                    val entry = waitListRepository.getWaitListEntry(campsite.id, currentUserId, requireNotNull(activeLottery).id)
+                                    if (entry?.status != "Won") {
+                                        waitListStatus = entry?.status
+                                        bookingError = "You must win the lottery before booking."
+                                    } else {
+                                        val newReservation = Reservation(
+                                            userId = currentUserId,
+                                            campsiteId = campsite.id,
+                                            campsiteName = campsite.name,
+                                            location = campsite.location,
+                                            maximumOccupancy = campsite.maxOccupancy,
+                                            price = campsite.price,
+                                            startDate = date,
+                                            endDate = date,
+                                            status = "ACTIVE",
+                                            lotteryId = requireNotNull(activeLottery).id
+                                        )
+                                        val reservationId = reservationRepository.saveReservation(newReservation)
+                                        if (reservationId.isNotBlank()) {
+                                            isBookingConfirmed = true
+                                            showReservationDialog = false
+                                            navController.navigate("booking_confirmation/${android.net.Uri.encode(reservationId)}")
+                                        } else {
+                                            bookingError = "Booking failed. Please try again."
+                                        }
+                                    }
+                                } catch (e: CancellationException) {
+                                    throw e
+                                } catch (e: Exception) {
+                                    bookingError = "Booking failed. Please try again."
+                                    Log.e("CampsiteDetailsScreen", "Error adding reservation", e)
+                                } finally {
+                                    isBookingSubmitting = false
+                                }
                             }
-                            navController.navigate("booking_confirmation")
                         }
                     },
+                    enabled = !isBookingSubmitting && !isBookingConfirmed,
                     modifier = Modifier.testTag("confirmBookingButton")
                 ) {
-                    Text("Confirm Booking")
+                    Text(if (isBookingSubmitting) "Booking..." else "Confirm Booking")
                 }
             },
             dismissButton = {
                 Button(
                     onClick = { showReservationDialog = false },
+                    enabled = !isBookingSubmitting,
                     modifier = Modifier.testTag("cancelBookingButton")
                 ) {
                     Text("Cancel")

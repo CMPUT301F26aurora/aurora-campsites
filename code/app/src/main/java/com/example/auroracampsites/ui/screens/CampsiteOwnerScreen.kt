@@ -32,6 +32,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
+import com.example.auroracampsites.data.session.UserSession
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -41,6 +43,8 @@ import com.example.auroracampsites.data.models.Campsite
 import com.example.auroracampsites.data.repository.CampsiteRepository
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.CancellationException
+import java.time.LocalDate
 
 @Composable
 fun CampsiteOwnerScreen(
@@ -51,15 +55,21 @@ fun CampsiteOwnerScreen(
     val coroutineScope = rememberCoroutineScope()
     var campsites by remember { mutableStateOf<List<Campsite>>(emptyList()) }
 
+    val context = LocalContext.current
+    val ownerId = remember(context) { UserSession.getCurrentUserId(context) }
+    var error by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+
     // Real-time synchronization with Firestore
-    LaunchedEffect(Unit) {
-        repository.getCampsitesRealtime().collect { fetchedList ->
-            campsites = fetchedList
-        }
+    LaunchedEffect(ownerId) {
+        try {
+            repository.getOwnerCampsitesRealtime(ownerId).collect { campsites = it }
+        } catch (e: CancellationException) { throw e }
+        catch (e: Exception) { error = e.message ?: "Unable to load campsites." }
     }
 
     var currentPage by remember { mutableStateOf("list") }
-    var selectedIndex by remember { mutableStateOf(0) }
+    var selectedId by remember { mutableStateOf("") }
 
     // Form fields for editing
     var campsiteName by remember { mutableStateOf("") }
@@ -72,11 +82,7 @@ fun CampsiteOwnerScreen(
     var rules by remember { mutableStateOf("") }
     var tags by remember { mutableStateOf("") }
 
-    val selectedCampsite = if (campsites.isNotEmpty() && selectedIndex in campsites.indices) {
-        campsites[selectedIndex]
-    } else {
-        null
-    }
+    val selectedCampsite = campsites.firstOrNull { it.id == selectedId }
 
     Column(
         modifier = modifier
@@ -92,6 +98,7 @@ fun CampsiteOwnerScreen(
 
         HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
 
+        if (error.isNotEmpty()) Text(error, color = MaterialTheme.colorScheme.error)
         when (currentPage) {
             "list" -> {
                 OwnerTitle("My Campsites")
@@ -104,7 +111,7 @@ fun CampsiteOwnerScreen(
                         textAlign = TextAlign.Center
                     )
                 } else {
-                    campsites.forEachIndexed { index, campsite ->
+                    campsites.forEach { campsite ->
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -123,7 +130,7 @@ fun CampsiteOwnerScreen(
                             ) {
                                 Button(
                                     onClick = {
-                                        selectedIndex = index
+                                        selectedId = campsite.id
                                         currentPage = "details"
                                     },
                                     modifier = Modifier.weight(1f)
@@ -135,9 +142,15 @@ fun CampsiteOwnerScreen(
                                 OutlinedButton(
                                     onClick = {
                                         coroutineScope.launch {
-                                            repository.deleteCampsite(campsite)
+                                            busy = true
+                                            error = ""
+                                            try { repository.deleteCampsite(campsite, ownerId) }
+                                            catch (e: CancellationException) { throw e }
+                                            catch (e: Exception) { error = e.message ?: "Unable to remove campsite." }
+                                            finally { busy = false }
                                         }
                                     },
+                                    enabled = !busy,
                                     modifier = Modifier.weight(1f),
                                     colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
                                 ) {
@@ -213,22 +226,36 @@ fun CampsiteOwnerScreen(
 
                     Button(
                         onClick = {
+                            val count = occupancy.toIntOrNull()
+                            val amount = price.toDoubleOrNull()
+                            val dates = availableDate.split(",").map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+                            if (campsiteName.isBlank() || location.isBlank() || description.isBlank() || count == null || count <= 0 || amount == null || !amount.isFinite() || amount < 0 || dates.isEmpty() || dates.any { runCatching { LocalDate.parse(it).toString() != it }.getOrDefault(true) }) {
+                                error = "Enter valid campsite information and dates (YYYY-MM-DD)."
+                                return@Button
+                            }
                             val updatedCampsite = selectedCampsite.copy(
                                 name = campsiteName,
                                 location = location,
                                 description = description,
-                                maxOccupancy = occupancy.toIntOrNull() ?: selectedCampsite.maxOccupancy,
-                                price = price.toDoubleOrNull() ?: selectedCampsite.price,
-                                availableDates = availableDate.split(",").map { it.trim() }.filter { it.isNotEmpty() },
+                                maxOccupancy = count,
+                                price = amount,
+                                availableDates = dates,
                                 cancellationPolicy = cancellationPolicy,
                                 rules = rules,
                                 amenities = tags.split(",").map { it.trim() }.filter { it.isNotEmpty() }
                             )
                             coroutineScope.launch {
-                                repository.addCampsite(updatedCampsite)
-                                currentPage = "saved"
+                                busy = true
+                                error = ""
+                                try {
+                                    repository.updateOwnerCampsite(ownerId, updatedCampsite)
+                                    currentPage = "saved"
+                                } catch (e: CancellationException) { throw e }
+                                catch (e: Exception) { error = e.message ?: "Unable to save changes." }
+                                finally { busy = false }
                             }
                         },
+                        enabled = !busy,
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text("Save Changes")

@@ -20,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -28,6 +29,10 @@ import com.example.auroracampsites.data.models.Campsite
 import com.example.auroracampsites.data.repository.CampsiteRepository
 import kotlinx.coroutines.launch
 import java.util.UUID
+import kotlinx.coroutines.CancellationException
+import java.time.LocalDate
+import com.example.auroracampsites.data.session.UserSession
+import com.example.auroracampsites.data.repository.UserRepository
 
 @Composable
 fun RegisterCampsiteScreen(
@@ -41,14 +46,15 @@ fun RegisterCampsiteScreen(
     var occupancy by remember { mutableStateOf("") }
     var mapLocation by remember { mutableStateOf("") }
     var price by remember { mutableStateOf("") }
-    var availableDate by remember { mutableStateOf("2026-06-01") }
+    var availableDate by remember { mutableStateOf("") }
     var cancellationPolicy by remember { mutableStateOf("") }
     var rules by remember { mutableStateOf("") }
     var tags by remember { mutableStateOf("") }
 
     var selectedImage by remember { mutableStateOf<Uri?>(null) }
     var success by remember { mutableStateOf(false) }
-    var showError by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf("") }
+    var isSubmitting by remember { mutableStateOf(false) }
 
     val coroutineScope = rememberCoroutineScope()
     val scrollState = rememberScrollState()
@@ -58,6 +64,11 @@ fun RegisterCampsiteScreen(
     ) { uri ->
         selectedImage = uri
     }
+    val context = LocalContext.current
+    val currentOwnerId = remember(context) {
+        UserSession.getCurrentUserId(context)
+    }
+    val userRepository = remember { UserRepository() }
 
     Column(
         modifier = modifier
@@ -144,10 +155,10 @@ fun RegisterCampsiteScreen(
                 }
             }
 
-            if (showError) {
+            if (errorMessage.isNotEmpty()) {
                 Spacer(Modifier.height(12.dp))
                 Text(
-                    "Please complete all required fields and enter valid occupancy/price numbers.",
+                    text = errorMessage,
                     color = Color.Red,
                     fontSize = 13.sp,
                     textAlign = TextAlign.Center
@@ -158,35 +169,74 @@ fun RegisterCampsiteScreen(
 
             Button(
                 onClick = {
-                    val parsedOccupancy = occupancy.toIntOrNull() ?: 0
-                    val parsedPrice = price.toDoubleOrNull() ?: 0.0
-                    val valid = campsiteName.isNotBlank() &&
-                            location.isNotBlank() &&
-                            description.isNotBlank() &&
-                            parsedOccupancy > 0
+                    val parsedOccupancy = occupancy.trim().toIntOrNull()
+                    val parsedPrice = price.trim().toDoubleOrNull()
 
-                    if (valid) {
-                        showError = false
-                        coroutineScope.launch {
-                            val newCampsite = Campsite(
-                                id = UUID.randomUUID().toString(),
-                                name = campsiteName,
-                                location = location,
-                                maxOccupancy = parsedOccupancy,
-                                price = parsedPrice,
-                                description = description,
-                                availableDates = availableDate.split(",").map { it.trim() }.filter { it.isNotEmpty() },
-                                cancellationPolicy = cancellationPolicy,
-                                rules = rules,
-                                amenities = tags.split(",").map { it.trim() }.filter { it.isNotEmpty() }
-                            )
-                            repository.addCampsite(newCampsite)
-                            success = true
+                    val dates = availableDate.split(",")
+                        .map { it.trim() }
+                        .filter { it.isNotEmpty() }
+                        .distinct()
+
+                    val validDates = dates.isNotEmpty() && dates.all { date ->
+                        try {
+                            LocalDate.parse(date).toString() == date
+                        } catch (e: Exception) {
+                            false
                         }
-                    } else {
-                        showError = true
+                    }
+
+                    if (campsiteName.isBlank() ||
+                        location.isBlank() ||
+                        description.isBlank()
+                    ) {
+                        errorMessage = "Please complete all required fields."
+                    } else if (parsedOccupancy == null || parsedOccupancy <= 0) {
+                        errorMessage = "Please enter a valid maximum occupancy."
+                    } else if (parsedPrice == null ||
+                        !parsedPrice.isFinite() ||
+                        parsedPrice < 0
+                    ) {
+                        errorMessage = "Please enter a valid price."
+                    } else if (!validDates) {
+                        errorMessage = "Please enter valid dates in YYYY-MM-DD format."
+                    } else if (!isSubmitting) {
+                        errorMessage = ""
+                        isSubmitting = true
+
+                        coroutineScope.launch {
+                            try {
+                                userRepository.getOrCreateUser(currentOwnerId)
+                                val newCampsite = Campsite(
+                                    id = UUID.randomUUID().toString(),
+                                    name = campsiteName.trim(),
+                                    location = location.trim(),
+                                    maxOccupancy = parsedOccupancy,
+                                    price = parsedPrice,
+                                    description = description.trim(),
+                                    availableDates = dates,
+                                    cancellationPolicy = cancellationPolicy.trim(),
+                                    rules = rules.trim(),
+                                    amenities = tags.split(",")
+                                        .map { it.trim() }
+                                        .filter { it.isNotEmpty() }
+                                        .distinct(),
+                                    ownerID = currentOwnerId
+                                )
+
+                                repository.addCampsite(newCampsite)
+                                success = true
+
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (e: Exception) {
+                                errorMessage = "Registration failed. Please try again."
+                            } finally {
+                                isSubmitting = false
+                            }
+                        }
                     }
                 },
+                enabled = !isSubmitting,
                 modifier = Modifier
                     .fillMaxWidth(0.8f)
                     .height(52.dp),
@@ -196,7 +246,10 @@ fun RegisterCampsiteScreen(
                 ),
                 border = BorderStroke(1.dp, Color.Black)
             ) {
-                Text("Register Campsite", fontWeight = FontWeight.Bold)
+                Text(
+                    if (isSubmitting) "Registering..." else "Register Campsite",
+                    fontWeight = FontWeight.Bold
+                )
             }
 
             Spacer(Modifier.height(32.dp))

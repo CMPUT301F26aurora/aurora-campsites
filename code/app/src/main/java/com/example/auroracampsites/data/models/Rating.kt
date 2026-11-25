@@ -16,5 +16,7 @@ class Rating (
     val userID : String="",
     //this will map to the id in the campsite data class
     val campsiteID: String="",
-    val rating : Double = 0.0
+    val rating : Double = 0.0,
+    val comment: String = "",
+    val reservationId: String = ""
 )

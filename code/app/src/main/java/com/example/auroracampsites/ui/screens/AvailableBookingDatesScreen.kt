@@ -8,7 +8,7 @@ package com.example.auroracampsites.ui.screens
  * Description:
  * Displays the user's lottery result and
  * available booking dates for a campsite.
- * (just for navigation: lines with // needs to be replace with real data)
+ * Reads personal lottery results and dates from Firebase.
  */
 
 import androidx.compose.foundation.BorderStroke
@@ -17,7 +17,13 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
+import androidx.compose.ui.platform.LocalContext
+import android.net.Uri
+import com.example.auroracampsites.data.session.UserSession
+import com.example.auroracampsites.data.repository.WaitListRepository
+import com.example.auroracampsites.data.repository.CampsiteRepository
+import kotlinx.coroutines.CancellationException
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -32,14 +38,15 @@ import androidx.navigation.NavController
 private enum class LotteryResult {
     WIN,
     LOSE,
-    NOT_ENTERED
+    WAITING,
+    UNKNOWN
 }
 
 private data class LotteryStatusData(
     val number: String,
     val lotteryName: String,
-    val winners: Int,
-    val reserveTimeline: String,
+    val campsiteId: String,
+    val availableDates: List<String>,
     val result: LotteryResult,
     val showDetails: Boolean = false,
     val note: String? = null
@@ -49,36 +56,55 @@ private data class LotteryStatusData(
 fun AvailableBookingDatesScreen(
     navController: NavController,
     modifier: Modifier = Modifier,
-    onBack: () -> Unit = {},
-    onSeeDetails: (String) -> Unit = {}
+    onBack: () -> Unit = { navController.popBackStack() },
+    onSeeDetails: (String) -> Unit = { id ->
+        navController.navigate("campsite_details/${Uri.encode(id)}")
+    }
 ) {
-    // hardcode here, sample data for UI test only
-    val lotteries = listOf(
-        LotteryStatusData(
-            number = "1a.",
-            lotteryName = "Pine Creek Lottery",
-            winners = 5,
-            reserveTimeline = "2026-11-08 to 2026-11-15",
-            result = LotteryResult.WIN,
-            showDetails = true
-        ),
-        LotteryStatusData(
-            number = "1b.",
-            lotteryName = "Pine Creek Lottery",
-            winners = 5,
-            reserveTimeline = "N/A",
-            result = LotteryResult.LOSE,
-            note = "*Results per loss or non entrance"
-        ),
-        LotteryStatusData(
-            number = "2.",
-            lotteryName = "Multiple Campsites Lottery",
-            winners = 5,
-            reserveTimeline = "N/A",
-            result = LotteryResult.WIN,
-            showDetails = true
-        )
-    )
+    val context = LocalContext.current
+    val userId = remember(context) { UserSession.getCurrentUserId(context) }
+    val waitListRepository = remember { WaitListRepository() }
+    val campsiteRepository = remember { CampsiteRepository() }
+    var lotteries by remember(userId) { mutableStateOf<List<LotteryStatusData>>(emptyList()) }
+    var isLoading by remember(userId) { mutableStateOf(true) }
+    var error by remember(userId) { mutableStateOf("") }
+    var refresh by remember { mutableStateOf(0) }
+
+    LaunchedEffect(userId, refresh) {
+        isLoading = true
+        error = ""
+        try {
+            val entries = waitListRepository.getUserWaitListEntries(userId)
+            lotteries = entries.sortedBy { it.first.registrationStart }.mapIndexed { index, (lottery, entry) ->
+                val id = lottery.campsiteId
+                val campsite = campsiteRepository.getCampsiteById(id)
+                val result = when (entry.status) {
+                    "Won" -> LotteryResult.WIN
+                    "Lost" -> LotteryResult.LOSE
+                    "Waiting" -> LotteryResult.WAITING
+                    else -> LotteryResult.UNKNOWN
+                }
+                LotteryStatusData(
+                    number = "${index + 1}.",
+                    lotteryName = (campsite?.name ?: "Campsite no longer available") + " (${lottery.registrationStart})",
+                    campsiteId = id,
+                    availableDates = if (result == LotteryResult.WIN && campsite != null && campsite.activeLotteryId == lottery.id)
+                        campsite.availableDates.filterNot { it in campsite.bookedDates }
+                            .distinct().sorted() else emptyList(),
+                    result = result,
+                    showDetails = result == LotteryResult.WIN && campsite != null && campsite.activeLotteryId == lottery.id,
+                    note = if (campsite == null) "Campsite not found." else null
+                )
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            android.util.Log.e("LotteryDebug", "Unable to load lottery records", e)
+            error = "Unable to load lottery records. Please try again."
+        } finally {
+            isLoading = false
+        }
+    }
 
     Column(
         modifier = modifier
@@ -128,7 +154,15 @@ fun AvailableBookingDatesScreen(
 
         Spacer(Modifier.height(14.dp))
 
-        Surface(
+        OutlinedButton(onClick = { refresh++ }, enabled = !isLoading) { Text("Refresh") }
+        if (isLoading) {
+            CircularProgressIndicator()
+        } else if (error.isNotEmpty()) {
+            Text(error, color = MaterialTheme.colorScheme.error)
+            Button(onClick = { refresh++ }) { Text("Retry") }
+        } else if (lotteries.isEmpty()) {
+            Text("No lottery records yet.")
+        } else Surface(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(4.dp),
             border = BorderStroke(1.dp, Color.Gray),
@@ -139,7 +173,7 @@ fun AvailableBookingDatesScreen(
                     LotteryStatusItem(
                         lottery = lottery,
                         onSeeDetails = {
-                            onSeeDetails(lottery.lotteryName)
+                            onSeeDetails(lottery.campsiteId)
                         }
                     )
 
@@ -181,21 +215,15 @@ private fun LotteryStatusItem(
 
         Spacer(Modifier.height(18.dp))
 
-        Text(
-            text = "Winners : ${lottery.winners}",
-            fontSize = 15.sp,
-            modifier = Modifier.padding(start = 12.dp)
-        )
-
-        Spacer(Modifier.height(18.dp))
-
-        Text(
-            text = "Reserve Timeline : ${lottery.reserveTimeline}",
-            fontSize = 15.sp,
-            modifier = Modifier.padding(start = 12.dp)
-        )
-
-        Spacer(Modifier.height(18.dp))
+        if (lottery.result == LotteryResult.WIN) {
+            Text(
+                text = "Available Booking Dates: " +
+                        lottery.availableDates.ifEmpty { listOf("None currently available") }.joinToString(", "),
+                fontSize = 15.sp,
+                modifier = Modifier.padding(start = 12.dp)
+            )
+            Spacer(Modifier.height(18.dp))
+        }
 
         val resultText = buildAnnotatedString {
             append("Lottery Result : ")
@@ -215,14 +243,6 @@ private fun LotteryStatusItem(
                 LotteryResult.LOSE -> {
                     withStyle(
                         SpanStyle(
-                            fontWeight = FontWeight.Bold
-                        )
-                    ) {
-                        append("Not Entered / ")
-                    }
-
-                    withStyle(
-                        SpanStyle(
                             color = Color.Red,
                             fontWeight = FontWeight.Bold
                         )
@@ -231,15 +251,16 @@ private fun LotteryStatusItem(
                     }
                 }
 
-                LotteryResult.NOT_ENTERED -> {
+                LotteryResult.WAITING -> {
                     withStyle(
                         SpanStyle(
                             fontWeight = FontWeight.Bold
                         )
                     ) {
-                        append("Not Entered")
+                        append("WAITING")
                     }
                 }
+                LotteryResult.UNKNOWN -> append("Unknown status")
             }
         }
 

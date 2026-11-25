@@ -8,6 +8,7 @@ package com.example.auroracampsites
 - campsite details, cancellation, and review options.
  */
 
+import android.net.Uri
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -25,6 +26,12 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.ui.platform.LocalContext
+import com.example.auroracampsites.data.session.UserSession
+import com.example.auroracampsites.data.repository.ReservationRepo
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
+import java.time.LocalDate
 
 /**
  * Manages the display and lifecycle of user reservations, switching
@@ -45,9 +52,10 @@ data class ReservationData(
     val campsiteName: String,
     val location: String,
     val maximumOccupancy: Int,
-    val rating: Double,
+    val rating: Double?,
     val startDate: String,
-    val endDate: String
+    val endDate: String,
+    val status: String = "ACTIVE"
 )
 
 @Composable
@@ -55,53 +63,70 @@ fun ReservationManagementScreen(
     navController: NavController,
     modifier: Modifier = Modifier
 ) {
-    var currentReservations by remember {
-        mutableStateOf(listOf(
-            ReservationData(
-                id = "1",
-                campsiteName = "Aurora Ridge Site A",
-                location = "Banff National Park",
-                maximumOccupancy = 4,
-                rating = 4.9,
-                startDate = "2026-06-01",
-                endDate = "2026-06-05"
-            )
-        ))
-    }
-
-    var pastReservations by remember {
-        mutableStateOf(emptyList<ReservationData>())
-    }
-
+    val context = LocalContext.current
+    val userId = remember(context) { UserSession.getCurrentUserId(context) }
+    val repository = remember { ReservationRepo() }
+    val scope = rememberCoroutineScope()
+    var records by remember { mutableStateOf<List<ReservationData>>(emptyList()) }
+    var loading by remember { mutableStateOf(true) }
+    var busy by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf("") }
+    var retry by remember { mutableStateOf(0) }
     var selectedReservation by remember { mutableStateOf<ReservationData?>(null) }
-
-    if (selectedReservation == null) {
-        ActiveReservationsScreen(
-            modifier = modifier,
-            currentReservations = currentReservations,
-            pastReservations = pastReservations,
-            onCancelReservation = { reservation ->
-                selectedReservation = reservation
-            },
-            onProfileClick = {
-                navController.navigate("profile_settings")
-            },
-            onReviewClick = { reservation ->
-                navController.navigate("leave_review")
+    LaunchedEffect(userId, retry) {
+        loading = true
+        error = ""
+        try {
+            records = repository.getUserReservations(userId).map {
+                ReservationData(it.id, it.campsiteName, it.location,
+                    it.maximumOccupancy, null, it.startDate, it.endDate, it.status)
             }
-        )
-    } else {
-        val reservation = selectedReservation!!
-
-        CancelReservationScreen(
+        } catch (e: CancellationException) { throw e }
+        catch (e: Exception) { error = "Unable to load reservations." }
+        finally { loading = false }
+    }
+    val today = LocalDate.now()
+    val current = records.filter { it.status == "ACTIVE" &&
+            (runCatching { LocalDate.parse(it.endDate) }.getOrNull()?.isBefore(today) != true) }
+    val past = records.filter { it !in current }
+    val selected = selectedReservation
+    when {
+        loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator()
+        }
+        selected != null -> CancelReservationScreen(
             modifier = modifier,
+            isSubmitting = busy,
+            errorMessage = error,
             onConfirmCancel = {
-                currentReservations = currentReservations.filter { it.id != reservation.id }
-                pastReservations = pastReservations + reservation
-                selectedReservation = null
+                if (!busy) {
+                    busy = true
+                    error = ""
+                    scope.launch {
+                        try {
+                            repository.cancelUserReservation(selected.id, userId)
+                            records = records.map { if (it.id == selected.id) it.copy(status = "CANCELLED") else it }
+                            selectedReservation = null
+                        } catch (e: CancellationException) { throw e }
+                        catch (e: Exception) { error = "Unable to cancel reservation. Please retry." }
+                        finally { busy = false }
+                    }
+                }
             },
-            onGoBack = {
-                selectedReservation = null
+            onGoBack = { if (!busy) { selectedReservation = null; error = "" } }
+        )
+        error.isNotEmpty() -> Column(Modifier.fillMaxSize().padding(20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+            Text(error)
+            Button(onClick = { retry++ }) { Text("Retry") }
+            Button(onClick = { navController.popBackStack() }) { Text("Back") }
+        }
+        else -> ActiveReservationsScreen(
+            modifier = modifier, currentReservations = current, pastReservations = past,
+            onCancelReservation = { selectedReservation = it; error = "" },
+            onProfileClick = { navController.navigate("profile_settings") },
+            onReviewClick = { reservation ->
+                navController.navigate("leave_review/${Uri.encode(reservation.id)}")
             }
         )
     }
@@ -281,7 +306,7 @@ private fun ReservationCard(
             Spacer(Modifier.height(16.dp))
 
             Text(
-                "Ratings: ${reservation.rating} ★",
+                "Ratings: ${reservation.rating?.let { "$it ★" } ?: "Unavailable"}",
                 fontSize = 14.sp
             )
 
@@ -292,6 +317,7 @@ private fun ReservationCard(
                 fontSize = 14.sp
             )
 
+            Text("Status: ${reservation.status}", fontSize = 14.sp)
             Spacer(Modifier.height(12.dp))
 
             Row(
@@ -312,7 +338,8 @@ private fun ReservationCard(
                             fontSize = 12.sp
                         )
                     }
-                } else {
+                } else if (reservation.status == "ACTIVE" &&
+                    runCatching { LocalDate.parse(reservation.endDate).isBefore(LocalDate.now()) }.getOrDefault(false)) {
                     OutlinedButton(
                         onClick = onReview,
                         shape = RoundedCornerShape(50),
@@ -336,7 +363,9 @@ private fun ReservationCard(
 fun CancelReservationScreen(
     modifier: Modifier = Modifier,
     onConfirmCancel: () -> Unit = {},
-    onGoBack: () -> Unit = {}
+    onGoBack: () -> Unit = {},
+    isSubmitting: Boolean = false,
+    errorMessage: String = ""
 ) {
     Surface(
         modifier = modifier.fillMaxSize(),
@@ -370,6 +399,7 @@ fun CancelReservationScreen(
 
             Button(
                 onClick = onConfirmCancel,
+                enabled = !isSubmitting,
                 modifier = Modifier
                     .fillMaxWidth(0.85f)
                     .height(70.dp),
@@ -387,10 +417,13 @@ fun CancelReservationScreen(
                 )
             }
 
+            if (isSubmitting) CircularProgressIndicator()
+            if (errorMessage.isNotBlank()) Text(errorMessage, color = MaterialTheme.colorScheme.error)
             Spacer(Modifier.height(40.dp))
 
             Button(
                 onClick = onGoBack,
+                enabled = !isSubmitting,
                 modifier = Modifier
                     .fillMaxWidth(0.85f)
                     .height(70.dp),
