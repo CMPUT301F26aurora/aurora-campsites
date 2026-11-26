@@ -25,6 +25,11 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Person
+import com.example.auroracampsites.data.repository.ReservationRepo
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import kotlinx.coroutines.launch
 
 /**
  * Manages the display and lifecycle of user reservations, switching
@@ -55,25 +60,53 @@ fun ReservationManagementScreen(
     navController: NavController,
     modifier: Modifier = Modifier
 ) {
-    var currentReservations by remember {
-        mutableStateOf(listOf(
-            ReservationData(
-                id = "1",
-                campsiteName = "Aurora Ridge Site A",
-                location = "Banff National Park",
-                maximumOccupancy = 4,
-                rating = 4.9,
-                startDate = "2026-06-01",
-                endDate = "2026-06-05"
-            )
-        ))
-    }
+    val reservationRepo = remember { ReservationRepo() }
+    val coroutineScope = rememberCoroutineScope()
 
-    var pastReservations by remember {
-        mutableStateOf(emptyList<ReservationData>())
-    }
-
+    var currentReservations by remember { mutableStateOf<List<ReservationData>>(emptyList()) }
+    var pastReservations by remember { mutableStateOf<List<ReservationData>>(emptyList()) }
     var selectedReservation by remember { mutableStateOf<ReservationData?>(null) }
+
+    // Fetch reservations from Firestore and split into Current vs. Past (US 01.06.01 & US 01.06.02)
+    LaunchedEffect(Unit) {
+        val allReservations = reservationRepo.getAllReservationsOnce()
+
+        val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+        val todayStr = dateFormat.format(Date())
+
+        val currentList = mutableListOf<ReservationData>()
+        val pastList = mutableListOf<ReservationData>()
+
+        for (res in allReservations) {
+            val cleanEndDate = res.endDate.trim()
+            val isPastByDate = cleanEndDate.isNotEmpty() && cleanEndDate < todayStr
+
+            val mapped = ReservationData(
+                id = res.id,
+                campsiteName = res.campsiteName,
+                location = res.location,
+                maximumOccupancy = res.maximumOccupancy,
+                rating = 0.0,
+                startDate = res.startDate,
+                endDate = res.endDate
+            )
+
+            // Past reservations: endDate is before today OR status is CANCELLED/COMPLETED
+            if (isPastByDate || res.status == "CANCELLED" || res.status == "COMPLETED") {
+                pastList.add(mapped)
+            } else if (res.status == "ACTIVE") {
+                currentList.add(mapped)
+            }
+        }
+        // Remove duplicate reservations (same campsite and dates) so each booking appears once
+        currentReservations = currentList.distinctBy {
+            "${it.campsiteName}_${it.startDate}_${it.endDate}"
+        }
+        pastReservations = pastList.distinctBy {
+            "${it.campsiteName}_${it.startDate}_${it.endDate}"
+        }
+
+    }
 
     if (selectedReservation == null) {
         ActiveReservationsScreen(
@@ -92,10 +125,12 @@ fun ReservationManagementScreen(
         )
     } else {
         val reservation = selectedReservation!!
-
         CancelReservationScreen(
             modifier = modifier,
             onConfirmCancel = {
+                coroutineScope.launch {
+                    reservationRepo.cancelReservation(reservation.id)
+                }
                 currentReservations = currentReservations.filter { it.id != reservation.id }
                 pastReservations = pastReservations + reservation
                 selectedReservation = null
@@ -106,6 +141,8 @@ fun ReservationManagementScreen(
         )
     }
 }
+
+
 
 @Composable
 fun ActiveReservationsScreen(
