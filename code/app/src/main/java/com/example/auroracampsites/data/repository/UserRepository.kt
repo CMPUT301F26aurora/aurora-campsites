@@ -57,17 +57,15 @@ class UserRepository {
     }
 
     /**
-     * updateUserNotifs: Flips the permissions for notifications.
+     * updateUserNotifs: Updates the user's notification preference in Firestore.
      */
     fun updateUserNotifs(user: User) {
-        userRef.document(user.id).get()
-            .addOnSuccessListener { document ->
-                val currentBoolean = document.getBoolean("notificationsEnabled") ?: true
-                val newBoolean = currentBoolean.not()
-                userRef.document(user.id).set(mapOf("notificationsEnabled" to newBoolean), SetOptions.merge())
-            }
+        userRef.document(user.id).set(
+            mapOf("notificationsEnabled" to user.notificationsEnabled),
+            SetOptions.merge()
+        )
     }
-
+    
     /**
      * deleteUser: Deletes a user from the database.
      */
