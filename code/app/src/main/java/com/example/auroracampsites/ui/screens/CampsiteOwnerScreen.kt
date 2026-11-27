@@ -8,6 +8,8 @@
 
 package com.example.auroracampsites.ui.screens
 
+import android.net.Uri
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -20,6 +22,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -41,11 +44,13 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.example.auroracampsites.data.models.Campsite
 import com.example.auroracampsites.data.repository.CampsiteRepository
+import com.example.auroracampsites.ui.qr.CampsiteQrButton
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.CancellationException
 import java.time.LocalDate
 
+/** Shows the current owner’s campsites, availability and reservation entry points. */
 @Composable
 fun CampsiteOwnerScreen(
     navController: NavController,
@@ -60,16 +65,28 @@ fun CampsiteOwnerScreen(
     var error by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
 
-    // Real-time synchronization with Firestore
-    LaunchedEffect(ownerId) {
-        try {
-            repository.getOwnerCampsitesRealtime(ownerId).collect { campsites = it }
-        } catch (e: CancellationException) { throw e }
-        catch (e: Exception) { error = e.message ?: "Unable to load campsites." }
-    }
+    var loading by remember(ownerId) { mutableStateOf(true) }
+    var loadFailed by remember(ownerId) { mutableStateOf(false) }
+    var retry by remember(ownerId) { mutableStateOf(0) }
+    var currentPage by remember(ownerId) { mutableStateOf("list") }
+    var selectedId by remember(ownerId) { mutableStateOf("") }
 
-    var currentPage by remember { mutableStateOf("list") }
-    var selectedId by remember { mutableStateOf("") }
+    LaunchedEffect(ownerId, retry, repository) {
+        loading = true
+        loadFailed = false
+        try {
+            repository.getOwnerCampsitesRealtime(ownerId).collect {
+                campsites = it
+                loading = false
+            }
+        } catch (exception: CancellationException) {
+            throw exception
+        } catch (_: Exception) {
+            campsites = emptyList()
+            loadFailed = true
+            loading = false
+        }
+    }
 
     // Form fields for editing
     var campsiteName by remember { mutableStateOf("") }
@@ -99,6 +116,18 @@ fun CampsiteOwnerScreen(
         HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
 
         if (error.isNotEmpty()) Text(error, color = MaterialTheme.colorScheme.error)
+        if (loading) {
+            CircularProgressIndicator()
+            return@Column
+        }
+        if (loadFailed) {
+            Text("Unable to load campsites.", color = MaterialTheme.colorScheme.error)
+            Button(onClick = {
+                loading = true
+                retry++
+            }) { Text("Retry") }
+            return@Column
+        }
         when (currentPage) {
             "list" -> {
                 OwnerTitle("My Campsites")
@@ -171,10 +200,19 @@ fun CampsiteOwnerScreen(
                     OwnerInfo("Description / Amenities", selectedCampsite.description)
                     OwnerInfo("Maximum Occupancy", selectedCampsite.maxOccupancy.toString())
                     OwnerInfo("Price ($ / Night)", selectedCampsite.price.toString())
-                    OwnerInfo(
-                        label = "Available Dates",
-                        value = selectedCampsite.availableDates.joinToString(", ")
-                    )
+                    OwnerCampsiteDates(selectedCampsite)
+                    if (selectedCampsite.ownerID == ownerId) {
+                        CampsiteQrButton(selectedCampsite.id, selectedCampsite.name)
+                    }
+
+                    Button(
+                        onClick = {
+                            navController.navigate("owner_reservations/${Uri.encode(selectedCampsite.id)}")
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Manage Reservations")
+                    }
                     OwnerInfo("Cancellation Policy", selectedCampsite.cancellationPolicy)
                     OwnerInfo("Campsite Rules", selectedCampsite.rules)
                     OwnerInfo("Tags", selectedCampsite.amenities.joinToString(", "))
@@ -279,7 +317,7 @@ fun CampsiteOwnerScreen(
                     OwnerInfo("Description / Amenities", selectedCampsite.description)
                     OwnerInfo("Maximum Occupancy", selectedCampsite.maxOccupancy.toString())
                     OwnerInfo("Price ($ / Night)", selectedCampsite.price.toString())
-                    OwnerInfo(label = "Available Dates", value = selectedCampsite.availableDates.joinToString(", "))
+                    OwnerCampsiteDates(selectedCampsite)
                     OwnerInfo("Cancellation Policy", selectedCampsite.cancellationPolicy)
                     OwnerInfo("Campsite Rules", selectedCampsite.rules)
                     OwnerInfo("Tags", selectedCampsite.amenities.joinToString(", "))
@@ -294,6 +332,15 @@ fun CampsiteOwnerScreen(
             }
         }
     }
+}
+
+/** Shows booked dates separately because stored availability also includes locked dates. */
+@Composable
+internal fun OwnerCampsiteDates(campsite: Campsite) {
+    val bookedDates = campsite.bookedDates.toSortedSet()
+    val availableDates = campsite.availableDates.filterNot { it in bookedDates }.toSortedSet()
+    OwnerInfo("Available Dates", availableDates.joinToString(", ").ifEmpty { "No available dates." })
+    OwnerInfo("Booked Dates", bookedDates.joinToString(", ").ifEmpty { "No booked dates." })
 }
 
 @Composable

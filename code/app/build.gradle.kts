@@ -57,6 +57,8 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.tooling)
     implementation(platform("com.google.firebase:firebase-bom:34.13.0"))
     implementation("com.google.firebase:firebase-firestore")
+    implementation("com.google.zxing:core:3.5.4")
+    implementation("com.google.android.gms:play-services-code-scanner:16.1.0")
     implementation("androidx.navigation:navigation-compose:2.8.0")
     implementation("com.google.maps.android:maps-compose:4.3.3")
     implementation("androidx.compose.material3:material3:1.2.0")

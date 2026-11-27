@@ -5,6 +5,7 @@ import com.example.auroracampsites.data.models.Campsite
 import com.example.auroracampsites.data.models.Lottery
 import java.time.LocalDate
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.Source
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
@@ -115,6 +116,27 @@ class ReservationRepo(
                 requireNotNull(doc.toObject(Reservation::class.java)).copy(id = doc.id)
             }
     }
+
+    /**
+     * Reads reservations for one owned campsite. Firestore rules still decide
+     * whether the current client may read the campsite and its reservations.
+     */
+    suspend fun getOwnerReservations(campsiteId: String, ownerId: String): List<Reservation> =
+        loadReservationsForOwnedCampsite(
+            campsiteId = campsiteId,
+            ownerId = ownerId,
+            loadCampsite = { id ->
+                val document = db.collection("campsites").document(id).get(Source.SERVER).await()
+                if (document.getBoolean("deleted") == true) null
+                else document.toObject(Campsite::class.java)?.copy(id = document.id)
+            },
+            loadReservations = { id ->
+                db.collection("reservations").whereEqualTo("campsiteId", id)
+                    .get(Source.SERVER).await().documents.map { document ->
+                        requireNotNull(document.toObject(Reservation::class.java)).copy(id = document.id)
+                    }
+            }
+        )
 
     /** Cancels a single-date lottery reservation and releases its date atomically. */
     suspend fun cancelUserReservation(reservationId: String, userId: String) {

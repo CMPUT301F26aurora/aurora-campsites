@@ -1,5 +1,6 @@
 package com.example.auroracampsites.ui.screens
 
+import android.net.Uri
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -8,10 +9,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
+import com.example.auroracampsites.ui.qr.ScanCampsiteQrButton
 
 /** Main navigation entry for existing entrant, owner and profile screens. */
 @Composable
-fun HomeScreen(navController: NavController) {
+fun HomeScreen(navController: NavController, scanQr: (suspend () -> String?)? = null) {
     Scaffold { padding ->
         Column(
             modifier = Modifier.fillMaxSize().padding(padding)
@@ -23,6 +25,11 @@ fun HomeScreen(navController: NavController) {
             HorizontalDivider()
             Text("Camping", style = MaterialTheme.typography.titleLarge)
             HomeLink("Search Campsites", "campsite_search", navController)
+            ScanCampsiteQrButton(scan = scanQr) { campsiteId ->
+                navController.navigate("campsite_details/${Uri.encode(campsiteId)}") {
+                    launchSingleTop = true
+                }
+            }
             HomeLink("Available Booking Dates", "available_booking_dates", navController)
             HomeLink("My Reservations", "active_reservations", navController)
             HorizontalDivider()

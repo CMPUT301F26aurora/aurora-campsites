@@ -1,9 +1,11 @@
 package com.example.auroracampsites.data.repository
 
+import com.example.auroracampsites.data.models.Campsite
 import com.example.auroracampsites.data.models.WaitList
 import com.example.auroracampsites.data.models.Lottery
 import com.google.firebase.Timestamp
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.Source
 import kotlinx.coroutines.tasks.await
 import java.time.LocalDate
 
@@ -67,6 +69,27 @@ class WaitListRepository(private val db: FirebaseFirestore = FirebaseFirestore.g
         if (round.getString("campsiteId") != campsiteId) return null
         val doc = lotteryRef(id).collection("waitlist").document(userId).get().await()
         return doc.toObject(WaitList::class.java)?.copy(id = doc.id)
+    }
+
+    /**
+     * Reads one owned lottery's entrants directly from the server.
+     * The ownership check scopes the client request. Firestore rules still control access.
+     */
+    suspend fun getOwnerWaitlist(campsiteId: String, lotteryId: String, ownerId: String): List<WaitList> {
+        require(campsiteId.isNotBlank() && lotteryId.isNotBlank() && ownerId.isNotBlank())
+        val campsiteDocument = db.collection("campsites").document(campsiteId).get(Source.SERVER).await()
+        val campsite = campsiteDocument.takeUnless { it.getBoolean("deleted") == true }
+            ?.toObject(Campsite::class.java)?.copy(id = campsiteDocument.id)
+        val roundRef = lotteryRef(lotteryId)
+        val lotteryDocument = roundRef.get(Source.SERVER).await()
+        val lottery = lotteryDocument.takeUnless {
+            it.getBoolean("deleted") == true || it.getBoolean("isDeleted") == true
+        }?.toObject(Lottery::class.java)
+        requireOwnedLottery(campsite, lottery, ownerId)
+
+        return roundRef.collection("waitlist").get(Source.SERVER).await().documents.map { document ->
+            requireNotNull(document.toObject(WaitList::class.java)).copy(id = document.id)
+        }
     }
 
     suspend fun getUserWaitListEntries(userId: String): List<Pair<Lottery, WaitList>> {
