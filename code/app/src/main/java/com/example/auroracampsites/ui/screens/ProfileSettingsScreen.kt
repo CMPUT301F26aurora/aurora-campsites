@@ -4,11 +4,12 @@ package com.example.auroracampsites.ui.screens
 - User Stories:
 - US 01.07.03 - Update profile information.
 - US 01.08.01 - Delete user profile.
+- US 01.10.01 - Opt out of receiving notifications.
  *
 - Description:
 - Allows users to update their profile picture,
-- name, email and phone number, or confirm
-- deletion of their profile.
+- name, email and phone number, toggle notification preferences, or
+- confirm deletion of their profile.
  */
 
 import android.net.Uri
@@ -70,19 +71,34 @@ fun ProfileManagementScreen(
     )
 ) {
     val userRepository = remember { UserRepository() }
-
+    var userState by remember(currentUser) { mutableStateOf(currentUser) }
     var showDeleteConfirmation by remember { mutableStateOf(false) }
     var showOptOutDialog by remember { mutableStateOf(false) }
 
     if (showOptOutDialog) {
         AlertDialog(
             onDismissRequest = { showOptOutDialog = false },
-            title = { Text("Notification Settings", fontWeight = FontWeight.Bold) },
-            text = { Text("You have opted out of notifications!") },
+            title = {
+                Text(
+                    "Notification Settings",
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Text(
+                    if (userState.notificationsEnabled) {
+                        "You have turned notifications back on!"
+                    } else {
+                        "You have opted out of notifications!"
+                    }
+                )
+            },
             confirmButton = {
                 Button(
                     onClick = { showOptOutDialog = false },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color.Black)
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color.Black
+                    )
                 ) {
                     Text("OK", color = Color.White)
                 }
@@ -105,6 +121,7 @@ fun ProfileManagementScreen(
         ProfileSettingsScreen(
             navController = navController,
             modifier = modifier,
+            notificationsEnabled = userState.notificationsEnabled,
             profile = ProfileSettingsData(
                 name = currentUser.username,
                 email = currentUser.email,
@@ -125,10 +142,15 @@ fun ProfileManagementScreen(
             onAppPolicy = {
                 navController.navigate("app_policy")
             },
-            onNotificationOptOut = {
-                userRepository.updateUserNotifs(currentUser)
+            nNotificationOptOut = {
+                val updatedUser = userState.copy(
+                    notificationsEnabled = !userState.notificationsEnabled
+                )
+                userState = updatedUser
+                userRepository.updateUserNotifs(updatedUser)
                 showOptOutDialog = true
             },
+            
             onDeleteClick = {
                 showDeleteConfirmation = true
             }
@@ -141,6 +163,7 @@ fun ProfileManagementScreen(
 fun ProfileSettingsScreen(
     navController: NavController,
     modifier: Modifier = Modifier,
+    notificationsEnabled: Boolean = true,
     profile: ProfileSettingsData = ProfileSettingsData(),
     onUpdateName: (String) -> Unit = {},
     onUpdateEmail: (String) -> Unit = {},
@@ -369,10 +392,13 @@ fun ProfileSettingsScreen(
                 )
 
                 ProfileBottomButton(
-                    text = "Notif Opt-Out",
+                    text = if (notificationsEnabled) {
+                        "Notif Opt-Out"
+                    } else {
+                        "Turn Notifications On"
+                    },
                     onClick = onNotificationOptOut
                 )
-
                 Spacer(Modifier.weight(1f))
 
                 ProfileBottomButton(
