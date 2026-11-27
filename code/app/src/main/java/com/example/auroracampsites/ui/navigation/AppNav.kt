@@ -2,6 +2,10 @@ package com.example.auroracampsites.ui.navigation
 
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.ui.platform.LocalContext
+import com.example.auroracampsites.data.session.UserSession
+import com.example.auroracampsites.data.repository.ReservationRepo
+import com.example.auroracampsites.data.repository.WaitListRepository
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -9,6 +13,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavType
 import androidx.navigation.navArgument
+import androidx.savedstate.SavedState
 import com.example.auroracampsites.data.models.Campsite
 import com.example.auroracampsites.data.repository.CampsiteRepository
 import kotlinx.coroutines.CancellationException
@@ -19,6 +24,18 @@ import androidx.navigation.compose.rememberNavController
 import com.example.auroracampsites.ReservationManagementScreen
 import com.example.auroracampsites.ui.screens.*
 
+
+/** Reads document IDs literally, including the valid Firestore ID "null". */
+internal val DocumentIdNavType = object : NavType<String>(isNullableAllowed = false) {
+    override fun put(bundle: SavedState, key: String, value: String) =
+        NavType.StringType.put(bundle, key, value)
+
+    override fun get(bundle: SavedState, key: String): String? =
+        NavType.StringType[bundle, key]
+
+    // StringType treats "null" as a missing value when parsing a route.
+    override fun parseValue(value: String): String = value
+}
 
 @Composable
 fun AppNav() {
@@ -44,7 +61,7 @@ fun AppNav() {
         //  View Campsite Details -- user (US 02.01.02 - 02.01.04, US 02.02.01)
         composable(
             route = "campsite_details/{campsiteId}",
-            arguments = listOf(navArgument("campsiteId") { type = NavType.StringType })
+            arguments = listOf(navArgument("campsiteId") { type = DocumentIdNavType })
         ) { entry ->
             val campsiteId = entry.arguments?.getString("campsiteId").orEmpty()
             val repository = remember { CampsiteRepository() }
@@ -125,6 +142,25 @@ fun AppNav() {
         composable("owner_lotteries") {
             HalfwayCheckpointScreen(navController = navController, mode = "owner")
         }
+        // Keep both IDs so the repository can confirm that the lottery belongs to this campsite.
+        composable(
+            route = "owner_waitlist/{campsiteId}/{lotteryId}",
+            arguments = listOf(
+                navArgument("campsiteId") { type = DocumentIdNavType },
+                navArgument("lotteryId") { type = DocumentIdNavType }
+            )
+        ) { entry ->
+            val context = LocalContext.current
+            val ownerId = remember(context) { runCatching { UserSession.getCurrentUserId(context) }.getOrNull().orEmpty() }
+            val repository = remember { WaitListRepository() }
+            OwnerWaitlistScreen(
+                campsiteId = entry.arguments?.getString("campsiteId").orEmpty(),
+                lotteryId = entry.arguments?.getString("lotteryId").orEmpty(),
+                ownerId = ownerId,
+                loadWaitlist = repository::getOwnerWaitlist,
+                onBack = { navController.popBackStack() }
+            )
+        }
         composable("admin_menu") {
             HalfwayCheckpointScreen(navController = navController, mode = "admin")
         }
@@ -132,6 +168,22 @@ fun AppNav() {
         //  View My Campsites & Manage Lotteries (US 02.03.01, US 02.04.01 - 02.04.05)
         composable("campsite_owner") {
             CampsiteOwnerScreen(navController = navController)
+        }
+
+        // Owner reservations use a campsite ID, separate from the entrant's reservations route.
+        composable(
+            route = "owner_reservations/{campsiteId}",
+            arguments = listOf(navArgument("campsiteId") { type = DocumentIdNavType })
+        ) { entry ->
+            val context = LocalContext.current
+            val ownerId = remember(context) { runCatching { UserSession.getCurrentUserId(context) }.getOrNull().orEmpty() }
+            val repository = remember { ReservationRepo() }
+            OwnerReservationsScreen(
+                campsiteId = entry.arguments?.getString("campsiteId").orEmpty(),
+                ownerId = ownerId,
+                loadReservations = repository::getOwnerReservations,
+                onBack = { navController.popBackStack() }
+            )
         }
 
         //  Register New Campsite (US 02.01.01)

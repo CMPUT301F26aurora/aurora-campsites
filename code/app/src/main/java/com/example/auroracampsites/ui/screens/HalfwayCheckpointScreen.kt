@@ -1,5 +1,6 @@
 package com.example.auroracampsites.ui.screens
 
+import android.net.Uri
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -257,6 +258,11 @@ fun HalfwayCheckpointScreen(
                             modifier = Modifier.fillMaxWidth()
                         ) { Text("Create Lottery") }
                     } else {
+                        TextButton(onClick = {
+                            val campsiteId = Uri.encode(campsite.id)
+                            val lotteryId = Uri.encode(campsite.activeLotteryId)
+                            navController.navigate("owner_waitlist/$campsiteId/$lotteryId")
+                        }) { Text("View Waitlist") }
                         var round by remember(campsite.activeLotteryId) { mutableStateOf<Lottery?>(null) }
                         var roundError by remember(campsite.activeLotteryId) { mutableStateOf("") }
                         var refreshRound by remember(campsite.activeLotteryId) { mutableStateOf(0) }
