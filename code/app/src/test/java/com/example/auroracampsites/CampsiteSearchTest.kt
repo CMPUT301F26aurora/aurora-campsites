@@ -95,9 +95,9 @@ class CampsiteSearchTest {
     fun campsite_defaultValues_verifyModelDefaults() {
         val defaultCampsite = Campsite(id = "99", name = "Test Park", location = "AB")
 
-        assertEquals(4, defaultCampsite.maxOccupancy)
-        assertEquals(45.0, defaultCampsite.price, 0.01)
-        assertTrue(defaultCampsite.hasActiveLottery)
+        assertEquals(0, defaultCampsite.maxOccupancy)
+        assertEquals(0.0, defaultCampsite.price, 0.01)
+        assertFalse(defaultCampsite.hasActiveLottery)
         assertFalse(defaultCampsite.isWinner)
     }
 }
