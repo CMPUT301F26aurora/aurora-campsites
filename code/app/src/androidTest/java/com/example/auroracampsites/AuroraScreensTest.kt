@@ -444,4 +444,59 @@ class AuroraScreensTest {
             "Phone updated in UI."
         ).assertExists()
     }
+    // US 01.10.01 - Opt out of receiving notifications
+    @Test
+    fun profile_notificationOptOutWorks() {
+        composeRule.setContent {
+            val navController = rememberNavController()
+            ProfileManagementScreen(
+                navController = navController,
+                currentUser = User(
+                    id = "test-user-001",
+                    username = "Test Entrant",
+                    email = "test@example.com",
+                    phoneNumber = "7801234567",
+                    role = UserRole.USER,
+                    notificationsEnabled = true
+                )
+            )
+        }
+
+        // Start from Profile Settings
+        composeRule.onNodeWithText("Profile Settings")
+            .assertExists()
+
+        // Opt out of notifications
+        composeRule.onNodeWithText("Notif Opt-Out")
+            .performScrollTo()
+            .performClick()
+
+        // Verify confirmation dialog
+        composeRule.onNodeWithText("You have opted out of notifications!")
+            .assertExists()
+        composeRule.onNodeWithText("OK")
+            .performClick()
+
+        // Verify button updates to Turn Notifications On
+        composeRule.onNodeWithText("Turn Notifications On")
+            .performScrollTo()
+            .assertExists()
+
+        // Turn notifications back on
+        composeRule.onNodeWithText("Turn Notifications On")
+            .performClick()
+
+        // Verify opt-in confirmation dialog
+        composeRule.onNodeWithText("You have turned notifications back on!")
+            .assertExists()
+        composeRule.onNodeWithText("OK")
+            .performClick()
+
+        // Verify button returns to Notif Opt-Out
+        composeRule.onNodeWithText("Notif Opt-Out")
+            .performScrollTo()
+            .assertExists()
+    }
+
+    
 }
