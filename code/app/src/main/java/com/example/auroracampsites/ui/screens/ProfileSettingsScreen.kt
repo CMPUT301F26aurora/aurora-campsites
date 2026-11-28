@@ -142,7 +142,7 @@ fun ProfileManagementScreen(
             onAppPolicy = {
                 navController.navigate("app_policy")
             },
-            nNotificationOptOut = {
+            onNotificationOptOut = {
                 val updatedUser = userState.copy(
                     notificationsEnabled = !userState.notificationsEnabled
                 )
